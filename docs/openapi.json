@@ -1,0 +1,1729 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Netriun Nexus API",
+    "version": "1.1.0",
+    "description": "Multi-tenant workspace API. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. Account creation requires credentials; PUT account requests may omit credentials to preserve them."
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "cookieAuth": []
+    }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "summary": "Sign in; returns token, user, expires_in and session cookie",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Login"
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/signup": {
+      "post": {
+        "summary": "Create an isolated Community workspace and owner session",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Signup"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Workspace created; returns token, owner, expires_in and session cookie"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "409": {
+            "description": "Username already in use"
+          },
+          "429": {
+            "description": "Sign-up rate limit exceeded"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "summary": "Current user",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "summary": "Revoke current session",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/summary": {
+      "get": {
+        "summary": "Scoped inventory counts",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "Limit counts to one accessible cloud account",
+            "schema": { "type": "integer", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/accounts": {
+      "get": {
+        "summary": "List accounts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Account"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{id}": {
+      "put": {
+        "summary": "Update Account",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Account"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Account",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/groups": {
+      "get": {
+        "summary": "List groups",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Group",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Group"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/groups/{id}": {
+      "put": {
+        "summary": "Update Group",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Group"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Group",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "summary": "List users",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create User",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/User"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{id}": {
+      "put": {
+        "summary": "Update User",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/User"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete User",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/instances": {
+      "get": {
+        "summary": "List instances",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "Limit inventory to one accessible cloud account",
+            "schema": { "type": "integer", "minimum": 1 }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/activity": {
+      "get": {
+        "summary": "List activity",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/instances/{id}": {
+      "get": {
+        "summary": "Cached compute instance; optional live=true queries its cloud provider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "live",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/instances/{id}/actions": {
+      "post": {
+        "summary": "Submit a provider lifecycle action (operator or manager)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Action"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{id}/eds/desktops": {
+      "get": {
+        "summary": "List live WUYING EDS desktops for an Alibaba account",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Desktop list" }, "400": { "description": "Invalid provider or region" }, "403": { "description": "Access denied" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      },
+      "post": {
+        "summary": "Create one to ten EDS desktops (account manager; may incur charges)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSDesktopCreate" } } } },
+        "responses": { "202": { "description": "Creation accepted" }, "400": { "description": "Invalid request or missing cost confirmation" }, "403": { "description": "Account management access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/regions": {
+      "get": {
+        "summary": "List supported WUYING EDS regions and the desktop count in each region",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
+        ],
+        "responses": { "200": { "description": "Region list with desktop counts; unavailable counts are -1" }, "400": { "description": "Invalid provider" }, "403": { "description": "Access denied" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/catalog": {
+      "get": {
+        "summary": "List EDS office sites, bundles, and policies for desktop creation",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "EDS catalog" }, "400": { "description": "Invalid provider or region" }, "403": { "description": "Access denied" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/desktops/{desktopID}/actions": {
+      "post": {
+        "summary": "Start, stop, or reboot an EDS desktop (operator or manager)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "desktopID", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Action" } } } },
+        "responses": { "202": { "description": "Action accepted" }, "400": { "description": "Invalid request" }, "403": { "description": "Operator access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/desktops/{desktopID}/renew": {
+      "post": {
+        "summary": "Renew a prepaid EDS desktop (account manager; may incur charges)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "desktopID", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSRenew" } } } },
+        "responses": { "202": { "description": "Renewal accepted" }, "400": { "description": "Invalid request or missing cost confirmation" }, "403": { "description": "Account management access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/desktops/{desktopID}/users": {
+      "post": {
+        "summary": "Bind or revoke EDS users on a running desktop (operator or manager)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "desktopID", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSEntitlement" } } } },
+        "responses": { "202": { "description": "Entitlement update accepted" }, "400": { "description": "Invalid request" }, "403": { "description": "Operator access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/desktops/{desktopID}/policy": {
+      "post": {
+        "summary": "Change the policy group of a running EDS desktop (account manager)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "desktopID", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSPolicyChange" } } } },
+        "responses": { "202": { "description": "Policy change accepted" }, "400": { "description": "Invalid request" }, "403": { "description": "Account management access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/desktops/{desktopID}/maintenance": {
+      "post": {
+        "summary": "Enter or exit EDS desktop maintenance mode (operator or manager)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "desktopID", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSMaintenance" } } } },
+        "responses": { "202": { "description": "Maintenance update accepted" }, "400": { "description": "Invalid request" }, "403": { "description": "Operator access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/desktops/{desktopID}/commands": {
+      "post": {
+        "summary": "Run a confirmed remote command on an EDS desktop (operator or manager)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "desktopID", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSCommand" } } } },
+        "responses": { "202": { "description": "Command accepted" }, "400": { "description": "Invalid request or missing confirmation" }, "403": { "description": "Operator access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/desktops/{desktopID}/billing": {
+      "post": {
+        "summary": "Switch an EDS desktop billing method (account manager; may create an order or refund)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "desktopID", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSBillingChange" } } } },
+        "responses": { "202": { "description": "Billing conversion accepted" }, "400": { "description": "Invalid request or missing cost confirmation" }, "403": { "description": "Account management access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/users": {
+      "get": {
+        "summary": "List live WUYING convenience accounts",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "EDS user list" }, "400": { "description": "Invalid provider or region" }, "403": { "description": "Access denied" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      },
+      "post": {
+        "summary": "Create a WUYING convenience account (account manager)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSUserCreate" } } } },
+        "responses": { "202": { "description": "User creation accepted" }, "400": { "description": "Invalid request" }, "403": { "description": "Account management access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/memberships": {
+      "get": {
+        "summary": "List visible memberships",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/groups/{id}/members/{userID}": {
+      "put": {
+        "summary": "Assign or update membership",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "userID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Membership"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove membership",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "userID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/settings": {
+      "get": {
+        "summary": "Get workspace settings (admin)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update workspace settings (admin)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/collector/run": {
+      "post": {
+        "summary": "Queue collection (admin)",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "Constraint conflict"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "nexus_session"
+      }
+    },
+    "schemas": {
+      "Login": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ]
+      },
+      "Signup": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100
+          },
+          "username": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 100
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 72
+          }
+        },
+        "required": [
+          "workspace",
+          "username",
+          "password"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 100
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 72
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "user"
+            ]
+          }
+        },
+        "required": [
+          "username",
+          "role"
+        ]
+      },
+      "Group": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "view_dashboard": {
+            "type": "boolean"
+          },
+          "manage_cloud_accounts": {
+            "type": "boolean"
+          },
+          "manage_group_members": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "Account": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "aws",
+              "alibaba"
+            ],
+            "default": "aws"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "group_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "credentials": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "access_key_id": {
+                "type": "string"
+              },
+              "secret_access_key": {
+                "type": "string"
+              },
+              "session_token": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "access_key_id",
+              "secret_access_key"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "Membership": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "operator",
+              "manager"
+            ]
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "Action": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "stop",
+              "reboot"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "EDSDesktopCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "office_site_id": { "type": "string" },
+          "bundle_id": { "type": "string" },
+          "policy_group_id": { "type": "string" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "amount": { "type": "integer", "minimum": 1, "maximum": 10 },
+          "charge_type": { "type": "string", "enum": ["PostPaid", "PrePaid"] },
+          "period": { "type": "integer", "minimum": 1, "maximum": 60 },
+          "period_unit": { "type": "string", "enum": ["Month", "Year"] },
+          "end_user_ids": { "type": "array", "items": { "type": "string" } },
+          "auto_pay": { "type": "boolean", "default": false },
+          "auto_renew": { "type": "boolean", "default": false },
+          "confirm_cost": { "type": "boolean", "const": true }
+        },
+        "required": ["office_site_id", "bundle_id", "policy_group_id", "name", "amount", "charge_type", "confirm_cost"]
+      },
+      "EDSRenew": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "period": { "type": "integer", "minimum": 1, "maximum": 60 },
+          "period_unit": { "type": "string", "enum": ["Month", "Year"] },
+          "auto_pay": { "type": "boolean", "default": false },
+          "confirm_cost": { "type": "boolean", "const": true }
+        },
+        "required": ["period", "period_unit", "confirm_cost"]
+      },
+      "EDSEntitlement": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operation": { "type": "string", "enum": ["bind", "revoke"] },
+          "end_user_ids": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "type": "string" } }
+        },
+        "required": ["operation", "end_user_ids"]
+      },
+      "EDSPolicyChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "policy_group_id": { "type": "string", "minLength": 1, "maxLength": 128 }
+        },
+        "required": ["policy_group_id"]
+      },
+      "EDSMaintenance": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": { "type": "string", "enum": ["ENTER", "EXIT"] }
+        },
+        "required": ["mode"]
+      },
+      "EDSCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "command": { "type": "string", "minLength": 1, "maxLength": 16384 },
+          "command_type": { "type": "string", "enum": ["RunPowerShellScript", "RunBatScript"] },
+          "timeout": { "type": "integer", "minimum": 10, "maximum": 86400 },
+          "confirm": { "type": "boolean", "const": true }
+        },
+        "required": ["command", "command_type", "timeout", "confirm"]
+      },
+      "EDSBillingChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "charge_type": { "type": "string", "enum": ["PrePaid", "PostPaid"] },
+          "period": { "type": "integer", "minimum": 0, "maximum": 6 },
+          "period_unit": { "type": "string", "enum": ["Week", "Month", "Year"] },
+          "auto_pay": { "type": "boolean", "default": false },
+          "confirm_cost": { "type": "boolean", "const": true }
+        },
+        "required": ["charge_type", "confirm_cost"]
+      },
+      "EDSUserCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "username": { "type": "string", "pattern": "^[a-z0-9_]{3,24}$" },
+          "email": { "type": "string", "format": "email", "maxLength": 254 },
+          "display_name": { "type": "string", "maxLength": 64 },
+          "password": { "type": "string", "minLength": 8, "maxLength": 30 },
+          "is_local_admin": { "type": "boolean", "default": false }
+        },
+        "required": ["username", "email"]
+      },
+      "Settings": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "collector_interval_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10080
+          },
+          "audit_retention_days": {
+            "type": "integer",
+            "minimum": 7,
+            "maximum": 3650
+          }
+        },
+        "required": [
+          "collector_interval_minutes",
+          "audit_retention_days"
+        ]
+      }
+    }
+  }
+}

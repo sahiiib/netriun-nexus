@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+/bin/
+/tmp/
+coverage.out
+*.db
+*.db-*
+*.log
+node_modules/

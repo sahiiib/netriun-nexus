@@ -1,0 +1,7 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Effect":"Allow","Action":["ec2:DescribeRegions","ec2:DescribeInstances","ec2:DescribeSecurityGroups","ec2:DescribeVolumes","ec2:DescribeNetworkInterfaces"],"Resource":"*"},
+    {"Effect":"Allow","Action":["ec2:StartInstances","ec2:StopInstances","ec2:RebootInstances"],"Resource":"arn:aws:ec2:REGION:ACCOUNT_ID:instance/*"}
+  ]
+}

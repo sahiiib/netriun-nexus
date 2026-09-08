@@ -1,0 +1,57 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DescribeRegions",
+        "ecs:DescribeInstances"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:StartInstance",
+        "ecs:StopInstance",
+        "ecs:RebootInstance"
+      ],
+      "Resource": "acs:ecs:*:*:instance/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecd:DescribeDesktops",
+        "ecd:DescribeRegions",
+        "ecd:DescribeBundles",
+        "ecd:DescribeOfficeSites",
+        "ecd:DescribePolicyGroups",
+        "ecd:DescribeUsers"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecd:StartDesktops",
+        "ecd:StopDesktops",
+        "ecd:RebootDesktops",
+        "ecd:ModifyUserEntitlement",
+        "ecd:CreateUsers",
+        "ecd:ModifyDesktopsPolicyGroup",
+        "ecd:SetDesktopMaintenance",
+        "ecd:RunCommand"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecd:CreateDesktops",
+        "ecd:RenewDesktops",
+        "ecd:ModifyDesktopChargeType"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

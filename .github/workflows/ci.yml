@@ -1,0 +1,31 @@
+name: Go checks
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ccmp
+          POSTGRES_PASSWORD: testing-only
+          POSTGRES_DB: ccmp_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ccmp -d ccmp_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go vet ./...
+      - run: go test -race ./...
+        env:
+          TEST_DATABASE_URL: postgres://ccmp:testing-only@localhost:5432/ccmp_test?sslmode=disable
+          TEST_REDIS_URL: redis://localhost:6379/15
+      - run: go build ./cmd/nexus ./cmd/migrate-legacy
