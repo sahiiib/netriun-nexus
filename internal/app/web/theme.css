@@ -22,3 +22,49 @@ html[data-theme="light"] .login-story{background:rgba(4,8,20,.94)}html[data-them
 html[data-theme="light"] .hero h2{color:#f7fbff}
 @media(max-width:750px){.login-story{display:none}.auth-card{padding:22px}.sidebar{background:#050816}.topbar{background:#070d1c}.account-context{margin:14px 0 4px;padding:0}.account-context label,.account-context small{display:none}.operation-grid{grid-template-columns:1fr}.provider-toolbar{padding-top:0}.provider-toolbar label,.provider-toolbar select{min-width:0;width:100%}.eds-toolbar input,.eds-toolbar select{width:100%;min-width:0}}
 @media(max-width:750px){html[data-theme="light"] .sidebar,html[data-theme="light"] .topbar{background:#f8fbfd}}
+
+/* Readability pass: keep the compact control-plane layout without tiny text. */
+.workspace,.profile,nav a{font-size:13px}
+.workspace small,.profile small{font-size:11px}
+.nav-label,.eyebrow{font-size:10px}
+.topbar,.primary,.secondary,.danger{font-size:12px}
+.topbar>div,.panel-heading p,.pagination{font-size:11px}
+.heading p,.muted{font-size:13px}
+.hero p,.stat-top,.account-card p{font-size:12px}
+.stat small,.count,.account-meta small{font-size:10px}
+.panel-heading h2,.empty h3,.api-doc h3{font-size:16px}
+input,select,textarea{font-size:13px}
+label{font-size:12px}
+table{font-size:12px}
+th{font-size:10px}
+td strong{font-size:12px}
+td small,.badge{font-size:10px}
+.text-button,.empty p,pre{font-size:12px}
+.detail-grid dt{font-size:11px}
+.detail-grid dd,.api-row,#toast{font-size:13px}
+
+.provider-toolbar{align-items:flex-end;flex-wrap:wrap}
+.provider-toolbar .region-select{margin:0;min-width:360px}
+.provider-toolbar .region-select select{max-width:none;min-width:360px}
+.region-shortcuts{display:flex;align-items:center;flex-wrap:wrap;gap:7px}
+.region-shortcut{min-height:39px;display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.14);border-radius:6px;background:rgba(255,255,255,.045);color:#aebdd0;font-size:11px}
+.region-shortcut:hover{border-color:rgba(69,240,194,.35);background:rgba(69,240,194,.07);color:#d9e5f2}
+.region-shortcut.active{border-color:rgba(69,240,194,.48);background:rgba(69,240,194,.12);color:#63e9c7}
+.region-shortcut strong{display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:rgba(69,240,194,.13);font-size:10px}
+
+.table-icon-button{width:30px;height:30px;padding:0;display:inline-grid;place-items:center;gap:0;border-radius:6px}
+.table-icon-button svg{width:15px;height:15px;display:block}
+.table-icon-button.lifecycle-start{border:1px solid rgba(69,240,194,.28);background:rgba(69,240,194,.08);color:#63e9c7}
+.table-icon-button.manage-action{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.045);color:#9fb1c6}
+.table-icon-button:hover{filter:brightness(1.18)}
+.table-icon-button:focus-visible,.region-shortcut:focus-visible{outline:2px solid rgba(69,240,194,.65)}
+
+html[data-theme="light"] .region-shortcut,html[data-theme="light"] .table-icon-button.manage-action{border-color:#ccd9e4;background:#fff;color:#52677b}
+html[data-theme="light"] .region-shortcut:hover{border-color:#82cdbb;background:#edf9f6;color:#126f5f}
+html[data-theme="light"] .region-shortcut.active{border-color:#47b99d;background:#dcf7f0;color:#087c69}
+
+@media(max-width:750px){
+ .provider-toolbar .region-select,.provider-toolbar .region-select select{min-width:0;width:100%}
+ .region-shortcuts{width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}
+ .region-shortcut{flex:0 0 auto}
+}
