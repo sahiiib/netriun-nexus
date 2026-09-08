@@ -1,0 +1,86 @@
+replicaCount: 1
+
+image:
+  repository: sahiiib/netriun-nexus
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 100
+  runAsGroup: 101
+  fsGroup: 101
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: nexus.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+config:
+  appOrigin: https://nexus.example.com
+  cookieSecure: "true"
+  trustedProxyCidrs: ""
+
+# Create this Secret before installation. It must contain DATABASE_URL,
+# REDIS_URL, ENCRYPTION_KEY, ADMIN_USERNAME, and ADMIN_PASSWORD.
+existingSecret: netriun-nexus
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+startupProbe:
+  failureThreshold: 30
+  periodSeconds: 2
+livenessProbe:
+  periodSeconds: 15
+  timeoutSeconds: 4
+readinessProbe:
+  periodSeconds: 10
+  timeoutSeconds: 4
+
+terminationGracePeriodSeconds: 30
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1

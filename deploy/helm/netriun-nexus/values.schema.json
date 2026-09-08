@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["image", "config", "existingSecret"],
+  "properties": {
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "image": {
+      "type": "object",
+      "required": ["repository", "tag", "pullPolicy"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1, "not": { "const": "latest" } },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "existingSecret": { "type": "string", "minLength": 1 },
+    "config": {
+      "type": "object",
+      "required": ["appOrigin", "cookieSecure", "trustedProxyCidrs"],
+      "properties": {
+        "appOrigin": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "cookieSecure": { "type": "string", "const": "true" },
+        "trustedProxyCidrs": { "type": "string" }
+      }
+    }
+  }
+}

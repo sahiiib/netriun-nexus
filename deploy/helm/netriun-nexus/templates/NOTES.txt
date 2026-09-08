@@ -1,0 +1,12 @@
+Netriun Nexus has been installed.
+
+The chart expects Secret {{ .Values.existingSecret | quote }} to contain:
+  DATABASE_URL, REDIS_URL, ENCRYPTION_KEY, ADMIN_USERNAME, ADMIN_PASSWORD
+
+{{- if .Values.ingress.enabled }}
+Open https://{{ (first .Values.ingress.hosts).host }}
+{{- else }}
+Run:
+  kubectl port-forward service/{{ include "netriun-nexus.fullname" . }} 8080:{{ .Values.service.port }}
+Then open http://localhost:8080
+{{- end }}

@@ -1,0 +1,13 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "netriun-nexus.fullname" . }}
+  labels:
+    {{- include "netriun-nexus.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "netriun-nexus.selectorLabels" . | nindent 6 }}
+{{- end }}

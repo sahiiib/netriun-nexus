@@ -105,4 +105,8 @@ This release supports inventory and lifecycle operations for AWS EC2 and Alibaba
 
 No production cloud action was performed during development. Real account validation requires your AWS/IAM or Alibaba Cloud RAM credentials and permissions.
 
+## Kubernetes
+
+A production-oriented Helm chart is available at [deploy/helm/netriun-nexus](deploy/helm/netriun-nexus). It deploys the application with non-root/read-only security settings and startup, liveness, and readiness probes. PostgreSQL and Redis are intentionally external dependencies. Render and inspect the chart before any cluster deployment; no Kubernetes resources are applied automatically.
+
 Implementation references: [AWS SDK for Go v2](https://docs.aws.amazon.com/sdk-for-go/), [Alibaba Cloud Go SDK V2](https://help.aliyun.com/en/sdk/developer-reference/use-alibaba-cloud-go-sdk-through-ide), [pgx](https://github.com/jackc/pgx/), [go-redis](https://redis.io/docs/latest/develop/clients/go/connect/).
