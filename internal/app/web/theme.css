@@ -68,3 +68,23 @@ html[data-theme="light"] .region-shortcut.active{border-color:#47b99d;background
  .region-shortcuts{width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}
  .region-shortcut{flex:0 0 auto}
 }
+
+.inline-warning{margin:0 23px 18px;padding:11px 13px;border:1px solid rgba(255,191,71,.24);border-radius:6px;background:rgba(255,191,71,.08);color:#ffd27a;font-size:11px}
+.binding-count{min-width:38px;padding:7px 11px;border:1px solid rgba(69,240,194,.3);border-radius:16px;background:rgba(69,240,194,.09);color:#63e9c7;font-weight:700}
+.binding-count:hover{background:rgba(69,240,194,.16)}
+.assignment-summary{display:flex;gap:10px;margin:18px 0 24px}
+.assignment-summary span{padding:9px 12px;border:1px solid var(--line);border-radius:6px;color:var(--muted);font-size:11px}
+.assignment-summary strong{color:var(--green);font-size:14px}
+.assignment-list{display:grid;gap:8px;max-height:250px;overflow:auto;margin:10px 0 24px;padding-right:3px}
+.assignment-row{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:11px 12px;border:1px solid var(--line);border-radius:7px;background:rgba(255,255,255,.025)}
+.assignment-row>div:first-child{min-width:0}
+.assignment-row>div:last-child{display:flex;align-items:center;gap:8px}
+.assignment-row strong,.assignment-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.assignment-row strong{font-size:12px;color:#eff7ff}
+.assignment-row small{margin-top:5px;color:var(--muted);font:10px ui-monospace,monospace}
+.assignment-row button{padding:7px 10px;font-size:10px}
+html[data-theme="light"] .inline-warning{background:#fff7e8;border-color:#efcf93;color:#8a5a17}
+html[data-theme="light"] .binding-count{background:#e3f8f2;border-color:#8cd6c4;color:#087c69}
+html[data-theme="light"] .assignment-row{background:#f8fbfd}
+html[data-theme="light"] .assignment-row strong{color:#152a3d}
+@media(max-width:750px){.inline-warning{margin:0 15px 15px}.assignment-row{align-items:flex-start}.assignment-row>div:last-child{flex-direction:column;align-items:flex-end}}

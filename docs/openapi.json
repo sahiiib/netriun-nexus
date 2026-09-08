@@ -1014,7 +1014,7 @@
         "summary": "List live WUYING EDS desktops for an Alibaba account",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
-          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+          { "name": "region", "in": "query", "required": true, "description": "Alibaba EDS region ID, or `all` to aggregate desktops across supported regions.", "schema": { "type": "string", "minLength": 2 } }
         ],
         "responses": { "200": { "description": "Desktop list" }, "400": { "description": "Invalid provider or region" }, "403": { "description": "Access denied" }, "502": { "description": "Alibaba EDS rejected the request" } }
       },

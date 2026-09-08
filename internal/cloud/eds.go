@@ -26,6 +26,14 @@ type EDSRegion struct {
 	Name string `json:"name"`
 }
 
+// EDSDesktop keeps the provider payload intact and adds the region that was
+// used to retrieve it. Alibaba's DescribeDesktops item does not include that
+// information, but cross-region views need it for subsequent operations.
+type EDSDesktop struct {
+	*ecd.DescribeDesktopsResponseBodyDesktops
+	RegionId *string `json:"RegionId,omitempty"`
+}
+
 type CreateDesktopInput struct {
 	Region, OfficeSiteID, BundleID, PolicyGroupID, Name string
 	Amount, Period                                      int32
@@ -68,8 +76,8 @@ func newEDSClients(region, key, secret, token, endpoint, protocol string) (*EDSC
 	return &EDSClients{Desktop: desktop, User: users}, nil
 }
 
-func EDSDesktops(ctx context.Context, c *ecd.Client, region string) ([]*ecd.DescribeDesktopsResponseBodyDesktops, error) {
-	items := []*ecd.DescribeDesktopsResponseBodyDesktops{}
+func EDSDesktops(ctx context.Context, c *ecd.Client, region string) ([]*EDSDesktop, error) {
+	items := []*EDSDesktop{}
 	next := ""
 	for {
 		if err := ctx.Err(); err != nil {
@@ -86,7 +94,11 @@ func EDSDesktops(ctx context.Context, c *ecd.Client, region string) ([]*ecd.Desc
 		if out == nil || out.Body == nil {
 			return nil, errors.New("Alibaba EDS returned an empty response")
 		}
-		items = append(items, out.Body.Desktops...)
+		for _, desktop := range out.Body.Desktops {
+			if desktop != nil {
+				items = append(items, &EDSDesktop{DescribeDesktopsResponseBodyDesktops: desktop, RegionId: stringPointer(region)})
+			}
+		}
 		next = value(out.Body.NextToken)
 		if next == "" {
 			return items, nil
@@ -376,4 +388,8 @@ func stringPointers(values []string) []*string {
 		items = append(items, &value)
 	}
 	return items
+}
+
+func stringPointer(value string) *string {
+	return &value
 }

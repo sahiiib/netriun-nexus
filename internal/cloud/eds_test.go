@@ -2,10 +2,12 @@ package cloud
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -64,8 +66,12 @@ func TestEDSInventoryUsersAndMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	desktops, err := EDSDesktops(context.Background(), clients.Desktop, "cn-hangzhou")
-	if err != nil || len(desktops) != 1 || value(desktops[0].DesktopId) != "ecd-one" {
+	if err != nil || len(desktops) != 1 || value(desktops[0].DesktopId) != "ecd-one" || value(desktops[0].RegionId) != "cn-hangzhou" {
 		t.Fatalf("desktops = %#v, err = %v", desktops, err)
+	}
+	encodedDesktop, err := json.Marshal(desktops[0])
+	if err != nil || !strings.Contains(string(encodedDesktop), `"DesktopId":"ecd-one"`) || !strings.Contains(string(encodedDesktop), `"RegionId":"cn-hangzhou"`) {
+		t.Fatalf("regional desktop JSON = %s, err = %v", encodedDesktop, err)
 	}
 	regions, err := EDSRegions(context.Background(), clients.Desktop)
 	if err != nil || len(regions) != 1 || regions[0].ID != "cn-hangzhou" {
