@@ -2,6 +2,10 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{- define "netriun-nexus.serviceName" -}}
+{{- default (include "netriun-nexus.fullname" .) .Values.service.name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
 {{- define "netriun-nexus.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}

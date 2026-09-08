@@ -1,0 +1,115 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ .Values.redis.name }}-pv
+  labels:
+    app.kubernetes.io/name: {{ .Values.redis.name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: {{ .Values.redis.persistence.size }}
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: {{ .Values.redis.persistence.hostPath | quote }}
+    type: DirectoryOrCreate
+  {{- with .Values.redis.persistence.nodeName }}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [{{ . | quote }}]
+  {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.redis.name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ""
+  resources:
+    requests:
+      storage: {{ .Values.redis.persistence.size }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.redis.name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.redis.name }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.redis.name }}
+spec:
+  clusterIP: None
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    app.kubernetes.io/name: {{ .Values.redis.name }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.redis.name }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.redis.name }}
+spec:
+  serviceName: {{ .Values.redis.name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.redis.name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Values.redis.name }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.redis.persistence.nodeName }}
+      nodeSelector:
+        kubernetes.io/hostname: {{ . | quote }}
+      {{- end }}
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: {{ .Values.redis.passwordKey }}
+          command: [sh, -c]
+          args: ['exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"']
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: [sh, -c, 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: [sh, -c, 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.redis.name }}
+{{- end }}

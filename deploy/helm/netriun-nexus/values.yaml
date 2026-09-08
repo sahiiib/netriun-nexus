@@ -34,6 +34,7 @@ securityContext:
   readOnlyRootFilesystem: true
 
 service:
+  name: nexus-service
   type: ClusterIP
   port: 80
   targetPort: 8080
@@ -43,14 +44,14 @@ ingress:
   className: ""
   annotations: {}
   hosts:
-    - host: nexus.example.com
+    - host: nexus.netriun.com
       paths:
         - path: /
           pathType: Prefix
   tls: []
 
 config:
-  appOrigin: https://nexus.example.com
+  appOrigin: https://nexus.netriun.com
   cookieSecure: "true"
   trustedProxyCidrs: ""
 
@@ -84,3 +85,42 @@ affinity: {}
 podDisruptionBudget:
   enabled: false
   minAvailable: 1
+
+# Optional single-node dependencies for local/on-prem clusters. Production
+# installations may leave these disabled and provide managed service URLs in
+# existingSecret instead.
+postgresql:
+  enabled: false
+  name: nexus-postgresql
+  image: postgres:17-alpine
+  username: nexus
+  database: nexus
+  passwordKey: POSTGRES_PASSWORD
+  persistence:
+    size: 10Gi
+    hostPath: /var/lib/netriun-nexus/postgresql
+    nodeName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+redis:
+  enabled: false
+  name: nexus-redis
+  image: redis:7-alpine
+  passwordKey: REDIS_PASSWORD
+  persistence:
+    size: 2Gi
+    hostPath: /var/lib/netriun-nexus/redis
+    nodeName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi

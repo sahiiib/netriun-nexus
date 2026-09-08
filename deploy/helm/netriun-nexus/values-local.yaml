@@ -1,0 +1,34 @@
+fullnameOverride: nexus
+
+image:
+  repository: sahiiib/netriun-nexus
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+service:
+  name: nexus-service
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# Cloudflare terminates public TLS and forwards to the ClusterIP service over
+# the cluster network. No Kubernetes Ingress is needed on this cluster.
+ingress:
+  enabled: false
+
+config:
+  appOrigin: https://nexus.netriun.com
+  cookieSecure: "true"
+  trustedProxyCidrs: "10.244.0.0/16"
+
+existingSecret: netriun-nexus
+
+postgresql:
+  enabled: true
+  persistence:
+    nodeName: k8s-node01
+
+redis:
+  enabled: true
+  persistence:
+    nodeName: k8s-node01

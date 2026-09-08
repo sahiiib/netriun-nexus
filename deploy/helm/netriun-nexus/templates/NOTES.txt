@@ -2,11 +2,23 @@ Netriun Nexus has been installed.
 
 The chart expects Secret {{ .Values.existingSecret | quote }} to contain:
   DATABASE_URL, REDIS_URL, ENCRYPTION_KEY, ADMIN_USERNAME, ADMIN_PASSWORD
+{{- if or .Values.postgresql.enabled .Values.redis.enabled }}
+The enabled local dependencies additionally require:
+{{- if .Values.postgresql.enabled }}
+  POSTGRES_PASSWORD
+{{- end }}
+{{- if .Values.redis.enabled }}
+  REDIS_PASSWORD
+{{- end }}
+{{- end }}
 
 {{- if .Values.ingress.enabled }}
 Open https://{{ (first .Values.ingress.hosts).host }}
 {{- else }}
+Cloudflare Tunnel origin:
+  http://{{ include "netriun-nexus.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
 Run:
-  kubectl port-forward service/{{ include "netriun-nexus.fullname" . }} 8080:{{ .Values.service.port }}
+  kubectl port-forward service/{{ include "netriun-nexus.serviceName" . }} 8080:{{ .Values.service.port }}
 Then open http://localhost:8080
 {{- end }}

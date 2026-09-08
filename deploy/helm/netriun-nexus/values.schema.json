@@ -14,6 +14,16 @@
       }
     },
     "existingSecret": { "type": "string", "minLength": 1 },
+    "service": {
+      "type": "object",
+      "required": ["name", "type", "port", "targetPort"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+        "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "targetPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
     "config": {
       "type": "object",
       "required": ["appOrigin", "cookieSecure", "trustedProxyCidrs"],

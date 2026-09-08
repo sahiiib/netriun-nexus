@@ -27,7 +27,7 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "netriun-nexus.fullname" $ }}
+                name: {{ include "netriun-nexus.serviceName" $ }}
                 port:
                   name: http
           {{- end }}

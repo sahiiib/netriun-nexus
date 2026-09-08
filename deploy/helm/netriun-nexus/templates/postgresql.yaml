@@ -1,0 +1,117 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ .Values.postgresql.name }}-pv
+  labels:
+    app.kubernetes.io/name: {{ .Values.postgresql.name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: {{ .Values.postgresql.persistence.size }}
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: {{ .Values.postgresql.persistence.hostPath | quote }}
+    type: DirectoryOrCreate
+  {{- with .Values.postgresql.persistence.nodeName }}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [{{ . | quote }}]
+  {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.postgresql.name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ""
+  resources:
+    requests:
+      storage: {{ .Values.postgresql.persistence.size }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.postgresql.name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.postgresql.name }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.postgresql.name }}
+spec:
+  clusterIP: None
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+  selector:
+    app.kubernetes.io/name: {{ .Values.postgresql.name }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.postgresql.name }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.postgresql.name }}
+spec:
+  serviceName: {{ .Values.postgresql.name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.postgresql.name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Values.postgresql.name }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.postgresql.persistence.nodeName }}
+      nodeSelector:
+        kubernetes.io/hostname: {{ . | quote }}
+      {{- end }}
+      containers:
+        - name: postgresql
+          image: {{ .Values.postgresql.image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.username | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.database | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: {{ .Values.postgresql.passwordKey }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, {{ .Values.postgresql.username | quote }}, -d, {{ .Values.postgresql.database | quote }}]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: [pg_isready, -U, {{ .Values.postgresql.username | quote }}, -d, {{ .Values.postgresql.database | quote }}]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.postgresql.name }}
+{{- end }}
