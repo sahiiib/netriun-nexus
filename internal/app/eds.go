@@ -16,6 +16,7 @@ import (
 
 var cloudResourcePattern = regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$")
 var edsUsernamePattern = regexp.MustCompile("^[a-z0-9_]{3,24}$")
+var edsHostnamePattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?$`)
 
 func (a *App) edsAccount(w http.ResponseWriter, r *http.Request, mode string) (int64, string, *cloud.EDSClients, bool) {
 	accountID, ok := pathID(w, r, "id")
@@ -235,6 +236,12 @@ func (a *App) edsCatalog(w http.ResponseWriter, r *http.Request) {
 		edsProviderError(w, "describe_catalog", accountID, region, err)
 		return
 	}
+	custom, customErr := cloud.EDSCustomCatalogForRegion(ctx, clients.Desktop, region)
+	if customErr != nil {
+		slog.Warn("Alibaba EDS custom catalog unavailable", "account_id", accountID, "region", region, "error", customErr)
+	} else {
+		result.DesktopTypes, result.Images = custom.DesktopTypes, custom.Images
+	}
 	write(w, 200, result)
 }
 
@@ -259,29 +266,56 @@ func (a *App) createEDSDesktop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		OfficeSiteID  string   `json:"office_site_id"`
-		BundleID      string   `json:"bundle_id"`
-		PolicyGroupID string   `json:"policy_group_id"`
-		Name          string   `json:"name"`
-		Amount        int32    `json:"amount"`
-		Period        int32    `json:"period"`
-		ChargeType    string   `json:"charge_type"`
-		PeriodUnit    string   `json:"period_unit"`
-		EndUserIDs    []string `json:"end_user_ids"`
-		AutoPay       bool     `json:"auto_pay"`
-		AutoRenew     bool     `json:"auto_renew"`
-		ConfirmCost   bool     `json:"confirm_cost"`
+		OfficeSiteID    string   `json:"office_site_id"`
+		BundleID        string   `json:"bundle_id"`
+		DesktopType     string   `json:"desktop_type"`
+		ImageID         string   `json:"image_id"`
+		DefaultLanguage string   `json:"default_language"`
+		SystemDiskSize  int32    `json:"system_disk_size"`
+		DataDiskSize    int32    `json:"data_disk_size"`
+		PolicyGroupID   string   `json:"policy_group_id"`
+		Hostname        string   `json:"hostname"`
+		Name            string   `json:"name"`
+		Amount          int32    `json:"amount"`
+		Period          int32    `json:"period"`
+		ChargeType      string   `json:"charge_type"`
+		PeriodUnit      string   `json:"period_unit"`
+		EndUserIDs      []string `json:"end_user_ids"`
+		AutoPay         bool     `json:"auto_pay"`
+		AutoRenew       bool     `json:"auto_renew"`
+		ConfirmCost     bool     `json:"confirm_cost"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	in.Name = strings.TrimSpace(in.Name)
+	in.Name, in.Hostname = strings.TrimSpace(in.Name), strings.TrimSpace(in.Hostname)
 	if !in.ConfirmCost {
 		problem(w, 400, "Explicit cost confirmation is required")
 		return
 	}
-	if !cloudResourcePattern.MatchString(in.OfficeSiteID) || !cloudResourcePattern.MatchString(in.BundleID) || !cloudResourcePattern.MatchString(in.PolicyGroupID) || len(in.Name) < 1 || len(in.Name) > 64 || in.Amount < 1 || in.Amount > 10 {
-		problem(w, 400, "Provide valid office site, bundle, policy, name, and an amount from 1 to 10")
+	if !cloudResourcePattern.MatchString(in.OfficeSiteID) || len(in.Name) < 1 || len(in.Name) > 64 || in.Amount < 1 || in.Amount > 10 {
+		problem(w, 400, "Provide a valid office site, name, and an amount from 1 to 10")
+		return
+	}
+	if in.PolicyGroupID != "" && !cloudResourcePattern.MatchString(in.PolicyGroupID) {
+		problem(w, 400, "Invalid optional security policy")
+		return
+	}
+	if in.Hostname != "" && (!edsHostnamePattern.MatchString(in.Hostname) || strings.Contains(in.Hostname, "--") || strings.Trim(in.Hostname, "0123456789") == "" || in.Amount != 1) {
+		problem(w, 400, "Hostname must be 2–15 letters, digits, or hyphens, cannot be only digits, and is supported here for one desktop at a time")
+		return
+	}
+	if in.BundleID != "" {
+		if !cloudResourcePattern.MatchString(in.BundleID) {
+			problem(w, 400, "Invalid desktop bundle")
+			return
+		}
+	} else if !cloudResourcePattern.MatchString(in.DesktopType) || !cloudResourcePattern.MatchString(in.ImageID) || in.SystemDiskSize < 60 || in.SystemDiskSize > 500 || in.SystemDiskSize%10 != 0 || in.DataDiskSize != 0 && (in.DataDiskSize < 40 || in.DataDiskSize > 2040 || in.DataDiskSize%10 != 0) {
+		problem(w, 400, "Custom desktops require a valid CPU/RAM specification, image, 60–500 GiB system disk, and optional 40–2040 GiB data disk in 10 GiB steps")
+		return
+	}
+	if in.DefaultLanguage != "" && in.DefaultLanguage != "en-US" && in.DefaultLanguage != "zh-CN" && in.DefaultLanguage != "zh-HK" && in.DefaultLanguage != "ja-JP" {
+		problem(w, 400, "Invalid desktop language")
 		return
 	}
 	if in.ChargeType != "PostPaid" && in.ChargeType != "PrePaid" {
@@ -305,7 +339,7 @@ func (a *App) createEDSDesktop(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := edsContext(r)
 	defer cancel()
-	result, err := cloud.EDSCreateDesktop(ctx, clients.Desktop, cloud.CreateDesktopInput{Region: region, OfficeSiteID: in.OfficeSiteID, BundleID: in.BundleID, PolicyGroupID: in.PolicyGroupID, Name: in.Name, Amount: in.Amount, Period: in.Period, ChargeType: in.ChargeType, PeriodUnit: in.PeriodUnit, EndUserIDs: in.EndUserIDs, AutoPay: in.AutoPay, AutoRenew: in.AutoRenew})
+	result, err := cloud.EDSCreateDesktop(ctx, clients.Desktop, cloud.CreateDesktopInput{Region: region, OfficeSiteID: in.OfficeSiteID, BundleID: in.BundleID, DesktopType: in.DesktopType, ImageID: in.ImageID, DefaultLanguage: in.DefaultLanguage, SystemDiskSize: in.SystemDiskSize, DataDiskSize: in.DataDiskSize, PolicyGroupID: in.PolicyGroupID, Hostname: in.Hostname, Name: in.Name, Amount: in.Amount, Period: in.Period, ChargeType: in.ChargeType, PeriodUnit: in.PeriodUnit, EndUserIDs: in.EndUserIDs, AutoPay: in.AutoPay, AutoRenew: in.AutoRenew})
 	if err != nil {
 		a.audit(r, "eds.desktop.create.failed", in.Name, nil)
 		edsProviderError(w, "create_desktops", accountID, region, err)
@@ -573,6 +607,15 @@ func (a *App) runEDSCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(in.Timeout+20)*time.Second)
 	defer cancel()
+	status, err := cloud.EDSDesktopStatus(ctx, clients.Desktop, region, desktopID)
+	if err != nil {
+		edsProviderError(w, "command_desktop_status", accountID, region, err)
+		return
+	}
+	if !strings.EqualFold(status, "Running") {
+		problem(w, 409, "Remote commands require a running EDS desktop")
+		return
+	}
 	result, err := cloud.EDSRunCommand(ctx, clients.Desktop, region, desktopID, in.Command, in.CommandType, in.Timeout)
 	if err != nil {
 		a.audit(r, "eds.desktop.command.failed", desktopID, details)
@@ -581,6 +624,26 @@ func (a *App) runEDSCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	a.audit(r, "eds.desktop.command.accepted", desktopID, details)
 	write(w, 202, result)
+}
+
+func (a *App) edsCommandResult(w http.ResponseWriter, r *http.Request) {
+	accountID, region, clients, ok := a.edsAccount(w, r, "operate")
+	if !ok {
+		return
+	}
+	desktopID, invokeID := r.PathValue("desktopID"), r.PathValue("invokeID")
+	if !cloudResourcePattern.MatchString(desktopID) || !cloudResourcePattern.MatchString(invokeID) {
+		problem(w, 400, "Invalid desktop or command invocation ID")
+		return
+	}
+	ctx, cancel := edsContext(r)
+	defer cancel()
+	result, err := cloud.EDSInvocation(ctx, clients.Desktop, region, desktopID, invokeID)
+	if err != nil {
+		edsProviderError(w, "describe_invocation", accountID, region, err)
+		return
+	}
+	write(w, 200, result)
 }
 
 func (a *App) changeEDSBilling(w http.ResponseWriter, r *http.Request) {

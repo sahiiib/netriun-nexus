@@ -37,6 +37,10 @@ func TestEDSInventoryUsersAndMutations(t *testing.T) {
 			fmt.Fprint(w, `{"RequestId":"c2","Bundles":[{"BundleId":"bundle-one","BundleName":"General purpose"}]}`)
 		case "DescribePolicyGroups":
 			fmt.Fprint(w, `{"RequestId":"c3","DescribePolicyGroups":[{"PolicyGroupId":"pg-one","Name":"Default policy"}]}`)
+		case "DescribeDesktopTypes":
+			fmt.Fprint(w, `{"RequestId":"c4","DesktopTypes":[{"DesktopTypeId":"ecd.basic.large","CpuCount":"4","MemorySize":"8192"}]}`)
+		case "DescribeImages":
+			fmt.Fprint(w, `{"RequestId":"c5","Images":[{"ImageId":"desktop-image-one","Name":"Windows 11","OsType":"Windows","OsName":"Windows 11"}]}`)
 		case "CreateDesktops":
 			fmt.Fprint(w, `{"RequestId":"d2","DesktopId":["ecd-two"],"OrderId":"order-one"}`)
 		case "RenewDesktops":
@@ -49,6 +53,8 @@ func TestEDSInventoryUsersAndMutations(t *testing.T) {
 			fmt.Fprint(w, `{"RequestId":"p1","ModifyResults":[{"DesktopId":"ecd-one","Code":"Success"}]}`)
 		case "RunCommand":
 			fmt.Fprint(w, `{"RequestId":"cmd1","InvokeId":"invoke-one"}`)
+		case "DescribeInvocations":
+			fmt.Fprint(w, `{"RequestId":"cmd2","Invocations":[{"InvokeId":"invoke-one","InvocationStatus":"Success","InvokeDesktops":[{"DesktopId":"ecd-one","InvocationStatus":"Success","Output":"hello from desktop","ExitCode":0}]}]}`)
 		case "ModifyDesktopChargeType":
 			fmt.Fprint(w, `{"RequestId":"b1","DesktopId":["ecd-one"],"OrderId":"order-three"}`)
 		default:
@@ -89,6 +95,10 @@ func TestEDSInventoryUsersAndMutations(t *testing.T) {
 	if err != nil || len(catalog.OfficeSites) != 1 || len(catalog.Bundles) != 1 || len(catalog.PolicyGroups) != 1 {
 		t.Fatalf("catalog = %#v, err = %v", catalog, err)
 	}
+	customCatalog, err := EDSCustomCatalogForRegion(context.Background(), clients.Desktop, "cn-hangzhou")
+	if err != nil || len(customCatalog.DesktopTypes) != 1 || len(customCatalog.Images) != 1 {
+		t.Fatalf("custom catalog = %#v, err = %v", customCatalog, err)
+	}
 	created, err := EDSCreateDesktop(context.Background(), clients.Desktop, CreateDesktopInput{Region: "cn-hangzhou", OfficeSiteID: "dir-one", BundleID: "bundle-one", PolicyGroupID: "pg-one", Name: "desktop", Amount: 1, ChargeType: "PostPaid"})
 	if err != nil || created == nil || len(created.DesktopId) != 1 {
 		t.Fatalf("create desktop = %#v, err = %v", created, err)
@@ -113,6 +123,14 @@ func TestEDSInventoryUsersAndMutations(t *testing.T) {
 	if _, err = EDSRunCommand(context.Background(), clients.Desktop, "cn-hangzhou", "ecd-one", "Get-Date", "RunPowerShellScript", 300); err != nil {
 		t.Fatal(err)
 	}
+	status, err := EDSDesktopStatus(context.Background(), clients.Desktop, "cn-hangzhou", "ecd-one")
+	if err != nil || status != "Running" {
+		t.Fatalf("desktop status = %q, err = %v", status, err)
+	}
+	invocation, err := EDSInvocation(context.Background(), clients.Desktop, "cn-hangzhou", "ecd-one", "invoke-one")
+	if err != nil || !invocation.Completed || invocation.Status != "Success" || invocation.Output != "hello from desktop" || invocation.ExitCode == nil || *invocation.ExitCode != 0 {
+		t.Fatalf("invocation = %#v, err = %v", invocation, err)
+	}
 	if _, err = EDSChangeBilling(context.Background(), clients.Desktop, "cn-hangzhou", "ecd-one", "PrePaid", "Month", 1, false); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +141,7 @@ func TestEDSInventoryUsersAndMutations(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	for _, want := range []string{"DescribeDesktops", "DescribeRegions", "DescribeUsers", "DescribeOfficeSites", "DescribeBundles", "DescribePolicyGroups", "CreateDesktops", "RenewDesktops", "ModifyUserEntitlement", "StartDesktops", "StopDesktops", "RebootDesktops", "ModifyDesktopsPolicyGroup", "SetDesktopMaintenance", "RunCommand", "ModifyDesktopChargeType", "CreateUsers"} {
+	for _, want := range []string{"DescribeDesktops", "DescribeRegions", "DescribeUsers", "DescribeOfficeSites", "DescribeBundles", "DescribePolicyGroups", "DescribeDesktopTypes", "DescribeImages", "CreateDesktops", "RenewDesktops", "ModifyUserEntitlement", "StartDesktops", "StopDesktops", "RebootDesktops", "ModifyDesktopsPolicyGroup", "SetDesktopMaintenance", "RunCommand", "DescribeInvocations", "ModifyDesktopChargeType", "CreateUsers"} {
 		found := false
 		for _, got := range actions {
 			found = found || got == want

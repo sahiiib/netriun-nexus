@@ -24,6 +24,9 @@
         "ecd:DescribeDesktops",
         "ecd:DescribeRegions",
         "ecd:DescribeBundles",
+        "ecd:DescribeDesktopTypes",
+        "ecd:DescribeImages",
+        "ecd:DescribeInvocations",
         "ecd:DescribeOfficeSites",
         "ecd:DescribePolicyGroups",
         "ecd:DescribeUsers"

@@ -19,6 +19,24 @@ type EDSCatalog struct {
 	OfficeSites  []*ecd.DescribeOfficeSitesResponseBodyOfficeSites           `json:"office_sites"`
 	Bundles      []*ecd.DescribeBundlesResponseBodyBundles                   `json:"bundles"`
 	PolicyGroups []*ecd.DescribePolicyGroupsResponseBodyDescribePolicyGroups `json:"policy_groups"`
+	DesktopTypes []*ecd.DescribeDesktopTypesResponseBodyDesktopTypes         `json:"desktop_types"`
+	Images       []*ecd.DescribeImagesResponseBodyImages                     `json:"images"`
+}
+
+type EDSCustomCatalog struct {
+	DesktopTypes []*ecd.DescribeDesktopTypesResponseBodyDesktopTypes `json:"desktop_types"`
+	Images       []*ecd.DescribeImagesResponseBodyImages             `json:"images"`
+}
+
+type EDSCommandResult struct {
+	InvokeID  string `json:"invoke_id"`
+	Status    string `json:"status"`
+	Completed bool   `json:"completed"`
+	Output    string `json:"output"`
+	ExitCode  *int64 `json:"exit_code,omitempty"`
+	ErrorCode string `json:"error_code,omitempty"`
+	ErrorInfo string `json:"error_info,omitempty"`
+	Dropped   int32  `json:"dropped,omitempty"`
 }
 
 type EDSRegion struct {
@@ -35,11 +53,13 @@ type EDSDesktop struct {
 }
 
 type CreateDesktopInput struct {
-	Region, OfficeSiteID, BundleID, PolicyGroupID, Name string
-	Amount, Period                                      int32
-	ChargeType, PeriodUnit                              string
-	EndUserIDs                                          []string
-	AutoPay, AutoRenew                                  bool
+	Region, OfficeSiteID, BundleID, PolicyGroupID, Name, Hostname string
+	DesktopType, ImageID, DefaultLanguage                         string
+	SystemDiskSize, DataDiskSize                                  int32
+	Amount, Period                                                int32
+	ChargeType, PeriodUnit                                        string
+	EndUserIDs                                                    []string
+	AutoPay, AutoRenew                                            bool
 }
 
 func EDSClient(region, key, secret, token string) (*EDSClients, error) {
@@ -235,13 +255,65 @@ func EDSCatalogForRegion(ctx context.Context, c *ecd.Client, region string) (EDS
 	return result, nil
 }
 
+func EDSCustomCatalogForRegion(ctx context.Context, c *ecd.Client, region string) (EDSCustomCatalog, error) {
+	result := EDSCustomCatalog{DesktopTypes: []*ecd.DescribeDesktopTypesResponseBodyDesktopTypes{}, Images: []*ecd.DescribeImagesResponseBodyImages{}}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	types, err := c.DescribeDesktopTypesWithOptions(new(ecd.DescribeDesktopTypesRequest).SetRegionId(region), alibabaRuntime())
+	if err != nil {
+		return result, err
+	}
+	if types == nil || types.Body == nil {
+		return result, errors.New("Alibaba EDS returned an empty desktop-type response")
+	}
+	result.DesktopTypes = append(result.DesktopTypes, types.Body.DesktopTypes...)
+	for next := ""; ; {
+		req := new(ecd.DescribeImagesRequest).SetRegionId(region).SetMaxResults(100)
+		if next != "" {
+			req.SetNextToken(next)
+		}
+		out, imageErr := c.DescribeImagesWithOptions(req, alibabaRuntime())
+		if imageErr != nil {
+			return result, imageErr
+		}
+		if out == nil || out.Body == nil {
+			return result, errors.New("Alibaba EDS returned an empty image response")
+		}
+		result.Images = append(result.Images, out.Body.Images...)
+		next = value(out.Body.NextToken)
+		if next == "" {
+			return result, nil
+		}
+	}
+}
+
 func EDSCreateDesktop(ctx context.Context, c *ecd.Client, in CreateDesktopInput) (*ecd.CreateDesktopsResponseBody, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	req := new(ecd.CreateDesktopsRequest).SetRegionId(in.Region).SetOfficeSiteId(in.OfficeSiteID).SetBundleId(in.BundleID).
-		SetPolicyGroupId(in.PolicyGroupID).SetDesktopName(in.Name).SetAmount(in.Amount).SetChargeType(in.ChargeType).
+	req := new(ecd.CreateDesktopsRequest).SetRegionId(in.Region).SetOfficeSiteId(in.OfficeSiteID).
+		SetDesktopName(in.Name).SetAmount(in.Amount).SetChargeType(in.ChargeType).
 		SetAutoPay(in.AutoPay).SetAutoRenew(in.AutoRenew)
+	if in.BundleID != "" {
+		req.SetBundleId(in.BundleID)
+	} else {
+		attachment := new(ecd.CreateDesktopsRequestDesktopAttachment).SetDesktopType(in.DesktopType).SetImageId(in.ImageID).
+			SetSystemDiskCategory("cloud_auto").SetSystemDiskSize(in.SystemDiskSize)
+		if in.DefaultLanguage != "" {
+			attachment.SetDefaultLanguage(in.DefaultLanguage)
+		}
+		if in.DataDiskSize > 0 {
+			attachment.SetDataDiskCategory("cloud_auto").SetDataDiskSize(in.DataDiskSize)
+		}
+		req.SetDesktopAttachment(attachment)
+	}
+	if in.PolicyGroupID != "" {
+		req.SetPolicyGroupId(in.PolicyGroupID)
+	}
+	if in.Hostname != "" {
+		req.SetHostname(in.Hostname)
+	}
 	if in.Period > 0 {
 		req.SetPeriod(in.Period).SetPeriodUnit(in.PeriodUnit)
 	}
@@ -305,6 +377,24 @@ func EDSDesktopAction(ctx context.Context, c *ecd.Client, region, desktopID, act
 	return err
 }
 
+func EDSDesktopStatus(ctx context.Context, c *ecd.Client, region, desktopID string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	req := new(ecd.DescribeDesktopsRequest).SetRegionId(region).SetDesktopId(stringPointers([]string{desktopID})).SetMaxResults(1)
+	out, err := c.DescribeDesktopsWithOptions(req, alibabaRuntime())
+	if err != nil {
+		return "", err
+	}
+	if out == nil || out.Body == nil {
+		return "", errors.New("Alibaba EDS returned an empty desktop-status response")
+	}
+	if len(out.Body.Desktops) == 0 || out.Body.Desktops[0] == nil {
+		return "", errors.New("Alibaba EDS desktop was not found")
+	}
+	return value(out.Body.Desktops[0].DesktopStatus), nil
+}
+
 func EDSChangePolicy(ctx context.Context, c *ecd.Client, region, desktopID, policyID string) (*ecd.ModifyDesktopsPolicyGroupResponseBody, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -340,6 +430,49 @@ func EDSRunCommand(ctx context.Context, c *ecd.Client, region, desktopID, comman
 		return nil, errors.New("Alibaba EDS returned an empty command response")
 	}
 	return out.Body, nil
+}
+
+func EDSInvocation(ctx context.Context, c *ecd.Client, region, desktopID, invokeID string) (EDSCommandResult, error) {
+	result := EDSCommandResult{InvokeID: invokeID, Status: "Pending"}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	req := new(ecd.DescribeInvocationsRequest).SetRegionId(region).SetInvokeId(invokeID).
+		SetDesktopIds(stringPointers([]string{desktopID})).SetIncludeInvokeDesktops(true).SetIncludeOutput(true).
+		SetContentEncoding("PlainText").SetMaxResults(1)
+	out, err := c.DescribeInvocationsWithOptions(req, alibabaRuntime())
+	if err != nil {
+		return result, err
+	}
+	if out == nil || out.Body == nil {
+		return result, errors.New("Alibaba EDS returned an empty command-result response")
+	}
+	if len(out.Body.Invocations) == 0 || out.Body.Invocations[0] == nil {
+		return result, nil
+	}
+	invocation := out.Body.Invocations[0]
+	result.Status = value(invocation.InvocationStatus)
+	for _, desktop := range invocation.InvokeDesktops {
+		if desktop == nil || value(desktop.DesktopId) != desktopID {
+			continue
+		}
+		result.Status = value(desktop.InvocationStatus)
+		result.Output = value(desktop.Output)
+		result.ExitCode = desktop.ExitCode
+		result.ErrorCode = value(desktop.ErrorCode)
+		result.ErrorInfo = value(desktop.ErrorInfo)
+		if desktop.Dropped != nil {
+			result.Dropped = *desktop.Dropped
+		}
+		break
+	}
+	switch strings.ToLower(result.Status) {
+	case "pending", "running", "stopping", "":
+		result.Completed = false
+	default:
+		result.Completed = true
+	}
+	return result, nil
 }
 
 func EDSChangeBilling(ctx context.Context, c *ecd.Client, region, desktopID, chargeType, periodUnit string, period int32, autoPay bool) (*ecd.ModifyDesktopChargeTypeResponseBody, error) {

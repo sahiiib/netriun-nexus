@@ -28,7 +28,7 @@ Netriun Nexus inventories Alibaba Cloud ECS instances and can submit start, stop
 
 Desktop creation and renewal may incur charges. Netriun Nexus requires an explicit confirmation for both operations. `AutoPay` is off unless selected; an EDS renewal with AutoPay off may create an unpaid order. Subscription renewal only applies to prepaid desktops, and user entitlement changes require the desktop to be running.
 
-If the connection uses an older copy of the RAM policy, replace it with the current [alibaba-policy.json](alibaba-policy.json). The region combobox requires `ecd:DescribeRegions`; the new Manage actions require `ecd:ModifyDesktopsPolicyGroup`, `ecd:SetDesktopMaintenance`, `ecd:RunCommand`, and `ecd:ModifyDesktopChargeType`.
+If the connection uses an older copy of the RAM policy, replace it with the current [alibaba-policy.json](alibaba-policy.json). The region combobox requires `ecd:DescribeRegions`; custom desktop configuration requires `ecd:DescribeDesktopTypes` and `ecd:DescribeImages`; command output requires `ecd:DescribeInvocations`. The Manage actions also require `ecd:ModifyDesktopsPolicyGroup`, `ecd:SetDesktopMaintenance`, `ecd:RunCommand`, and `ecd:ModifyDesktopChargeType`.
 
 The WUYING user directory uses partition-level endpoints rather than the selected desktop region: `cn-shanghai` for China mainland and `ap-southeast-1` for international regions, including Hong Kong and Europe. Netriun Nexus performs this routing automatically. The desktop page still uses the region selected in the portal.
 

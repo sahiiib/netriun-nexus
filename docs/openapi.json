@@ -1119,6 +1119,18 @@
         "responses": { "202": { "description": "Command accepted" }, "400": { "description": "Invalid request or missing confirmation" }, "403": { "description": "Operator access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
       }
     },
+    "/accounts/{id}/eds/desktops/{desktopID}/commands/{invokeID}": {
+      "get": {
+        "summary": "Get remote command status and output (operator or manager)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "desktopID", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "invokeID", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Invocation status, exit code, output, and provider error details" }, "400": { "description": "Invalid request" }, "403": { "description": "Operator access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
     "/accounts/{id}/eds/desktops/{desktopID}/billing": {
       "post": {
         "summary": "Switch an EDS desktop billing method (account manager; may create an order or refund)",
@@ -1620,7 +1632,13 @@
         "properties": {
           "office_site_id": { "type": "string" },
           "bundle_id": { "type": "string" },
+          "desktop_type": { "type": "string", "description": "Required with image_id and system_disk_size when bundle_id is empty" },
+          "image_id": { "type": "string" },
+          "default_language": { "type": "string", "enum": ["en-US", "zh-CN", "zh-HK", "ja-JP"] },
+          "system_disk_size": { "type": "integer", "minimum": 60, "maximum": 500, "multipleOf": 10 },
+          "data_disk_size": { "type": "integer", "minimum": 0, "maximum": 2040, "description": "Zero omits the optional data disk; otherwise 40–2040 GiB in 10 GiB steps" },
           "policy_group_id": { "type": "string" },
+          "hostname": { "type": "string", "minLength": 2, "maxLength": 15, "description": "Optional for single-desktop requests" },
           "name": { "type": "string", "minLength": 1, "maxLength": 64 },
           "amount": { "type": "integer", "minimum": 1, "maximum": 10 },
           "charge_type": { "type": "string", "enum": ["PostPaid", "PrePaid"] },
@@ -1631,7 +1649,7 @@
           "auto_renew": { "type": "boolean", "default": false },
           "confirm_cost": { "type": "boolean", "const": true }
         },
-        "required": ["office_site_id", "bundle_id", "policy_group_id", "name", "amount", "charge_type", "confirm_cost"]
+        "required": ["office_site_id", "name", "amount", "charge_type", "confirm_cost"]
       },
       "EDSRenew": {
         "type": "object",
