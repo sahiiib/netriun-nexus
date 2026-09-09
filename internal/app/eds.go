@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -17,6 +19,10 @@ import (
 var cloudResourcePattern = regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$")
 var edsUsernamePattern = regexp.MustCompile("^[a-z0-9_]{3,24}$")
 var edsHostnamePattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?$`)
+
+func edsRegionsCacheKey(workspaceID, accountID int64) string {
+	return fmt.Sprintf("eds:regions:%d:%d", workspaceID, accountID)
+}
 
 func (a *App) edsAccount(w http.ResponseWriter, r *http.Request, mode string) (int64, string, *cloud.EDSClients, bool) {
 	accountID, ok := pathID(w, r, "id")
@@ -162,6 +168,24 @@ func (a *App) edsRegions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := current(r)
+	type regionCount struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Desktops  int    `json:"desktops"`
+		Available bool   `json:"available"`
+	}
+	type regionResponse struct {
+		Data          []regionCount `json:"data"`
+		TotalDesktops int           `json:"total_desktops"`
+	}
+	cacheKey := edsRegionsCacheKey(u.WorkspaceID, accountID)
+	if raw, cacheErr := a.Redis.Get(r.Context(), cacheKey).Bytes(); cacheErr == nil {
+		var cached regionResponse
+		if json.Unmarshal(raw, &cached) == nil {
+			write(w, 200, cached)
+			return
+		}
+	}
 	credentials, err := a.credentials(r.Context(), u.WorkspaceID, accountID, "alibaba")
 	if err != nil {
 		problem(w, 400, "The selected account is not an Alibaba Cloud connection")
@@ -185,17 +209,11 @@ func (a *App) edsRegions(w http.ResponseWriter, r *http.Request) {
 		edsProviderError(w, "describe_regions", accountID, seedRegion, err)
 		return
 	}
-	type regionCount struct {
-		ID        string `json:"id"`
-		Name      string `json:"name"`
-		Desktops  int    `json:"desktops"`
-		Available bool   `json:"available"`
-	}
-	result := make([]regionCount, len(regions))
+	counts := make([]regionCount, len(regions))
 	var wg sync.WaitGroup
 	limit := make(chan struct{}, 6)
 	for i, region := range regions {
-		result[i] = regionCount{ID: region.ID, Name: region.Name, Desktops: -1}
+		counts[i] = regionCount{ID: region.ID, Name: region.Name, Desktops: -1}
 		i, region := i, region
 		wg.Add(1)
 		go func() {
@@ -206,7 +224,7 @@ func (a *App) edsRegions(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			defer func() { <-limit }()
-			item := result[i]
+			item := counts[i]
 			client, clientErr := cloud.EDSClient(region.ID, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken)
 			if clientErr == nil {
 				count, listErr := cloud.EDSDesktopCount(ctx, client.Desktop, region.ID)
@@ -216,12 +234,26 @@ func (a *App) edsRegions(w http.ResponseWriter, r *http.Request) {
 					slog.Warn("Alibaba EDS region count failed", "account_id", accountID, "region", region.ID, "error", listErr)
 				}
 			}
-			result[i] = item
+			counts[i] = item
 		}()
 	}
 	wg.Wait()
+	result := make([]regionCount, 0, len(counts))
+	total := 0
+	for _, item := range counts {
+		if item.Available && item.Desktops > 0 {
+			result = append(result, item)
+			total += item.Desktops
+		}
+	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
-	write(w, 200, map[string]any{"data": result})
+	payload := regionResponse{Data: result, TotalDesktops: total}
+	if raw, marshalErr := json.Marshal(payload); marshalErr == nil {
+		if cacheErr := a.Redis.Set(r.Context(), cacheKey, raw, 5*time.Minute).Err(); cacheErr != nil {
+			slog.Warn("Alibaba EDS region cache write failed", "account_id", accountID, "error", cacheErr)
+		}
+	}
+	write(w, 200, payload)
 }
 
 func (a *App) edsCatalog(w http.ResponseWriter, r *http.Request) {
@@ -346,6 +378,9 @@ func (a *App) createEDSDesktop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.audit(r, "eds.desktop.create.accepted", in.Name, nil)
+	if cacheErr := a.Redis.Del(r.Context(), edsRegionsCacheKey(u.WorkspaceID, accountID)).Err(); cacheErr != nil {
+		slog.Warn("Alibaba EDS region cache invalidation failed", "account_id", accountID, "error", cacheErr)
+	}
 	write(w, 202, result)
 }
 
