@@ -1030,7 +1030,7 @@
     },
     "/accounts/{id}/eds/regions": {
       "get": {
-        "summary": "List WUYING EDS regions that contain desktops, with per-region and total counts",
+        "summary": "List supported WUYING EDS regions with availability, per-region counts, and the total available desktop count",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
         ],

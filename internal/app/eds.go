@@ -21,7 +21,7 @@ var edsUsernamePattern = regexp.MustCompile("^[a-z0-9_]{3,24}$")
 var edsHostnamePattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?$`)
 
 func edsRegionsCacheKey(workspaceID, accountID int64) string {
-	return fmt.Sprintf("eds:regions:%d:%d", workspaceID, accountID)
+	return fmt.Sprintf("eds:regions:v2:%d:%d", workspaceID, accountID)
 }
 
 func (a *App) edsAccount(w http.ResponseWriter, r *http.Request, mode string) (int64, string, *cloud.EDSClients, bool) {
@@ -238,16 +238,14 @@ func (a *App) edsRegions(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	wg.Wait()
-	result := make([]regionCount, 0, len(counts))
 	total := 0
 	for _, item := range counts {
 		if item.Available && item.Desktops > 0 {
-			result = append(result, item)
 			total += item.Desktops
 		}
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
-	payload := regionResponse{Data: result, TotalDesktops: total}
+	sort.Slice(counts, func(i, j int) bool { return counts[i].ID < counts[j].ID })
+	payload := regionResponse{Data: counts, TotalDesktops: total}
 	if raw, marshalErr := json.Marshal(payload); marshalErr == nil {
 		if cacheErr := a.Redis.Set(r.Context(), cacheKey, raw, 5*time.Minute).Err(); cacheErr != nil {
 			slog.Warn("Alibaba EDS region cache write failed", "account_id", accountID, "error", cacheErr)

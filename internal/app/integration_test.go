@@ -171,11 +171,11 @@ func TestIntegration(t *testing.T) {
 	request("GET", fmt.Sprintf("/api/v1/instances?account_id=%d", account2), viewer, nil, 403)
 	request("GET", fmt.Sprintf("/api/v1/summary?account_id=%d", account1), viewer, nil, 200)
 	request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=us-east-1", account1), adminToken, nil, 400)
-	if err = a.Redis.Set(ctx, edsRegionsCacheKey(workspaceID, alibabaAccount), `{"data":[{"id":"cn-hangzhou","name":"China (Hangzhou)","desktops":3,"available":true}],"total_desktops":3}`, time.Minute).Err(); err != nil {
+	if err = a.Redis.Set(ctx, edsRegionsCacheKey(workspaceID, alibabaAccount), `{"data":[{"id":"ap-southeast-1","name":"Singapore","desktops":0,"available":true},{"id":"cn-hangzhou","name":"China (Hangzhou)","desktops":3,"available":true}],"total_desktops":3}`, time.Minute).Err(); err != nil {
 		t.Fatal(err)
 	}
 	regionIndex := request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/regions", alibabaAccount), adminToken, nil, 200)
-	if !strings.Contains(regionIndex.Body.String(), `"total_desktops":3`) || strings.Contains(regionIndex.Body.String(), "ap-southeast-1") {
+	if !strings.Contains(regionIndex.Body.String(), `"total_desktops":3`) || !strings.Contains(regionIndex.Body.String(), "ap-southeast-1") {
 		t.Fatalf("unexpected cached EDS region index: %s", regionIndex.Body.String())
 	}
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), viewer, map[string]any{}, 403)
@@ -267,6 +267,10 @@ func TestIntegration(t *testing.T) {
 	request("GET", "/api/v1/auth/me", adminToken, nil, 401)
 	request("GET", "/readyz", "", nil, 200)
 	request("GET", "/", "", nil, 200)
+	webAsset := request("GET", "/app.js", "", nil, 200)
+	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") {
+		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
+	}
 	// Rate limiting is atomic and independent of username.
 	for i := 0; i < 21; i++ {
 		r := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"username":"none","password":"bad"}`))
