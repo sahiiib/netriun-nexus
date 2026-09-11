@@ -3,13 +3,15 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"github.com/netriun/nexus/internal/secure"
-	"golang.org/x/crypto/bcrypt"
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/netriun/nexus/internal/secure"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type session struct {
@@ -50,7 +52,7 @@ func (a *App) auth(next http.HandlerFunc) http.Handler {
 			return
 		}
 		var u User
-		err = a.DB.QueryRow(r.Context(), "SELECT u.id,u.workspace_id,w.name,u.username,u.role,u.is_owner,u.session_version FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE u.id=$1", s.UserID).Scan(&u.ID, &u.WorkspaceID, &u.WorkspaceName, &u.Username, &u.Role, &u.IsOwner, &u.Version)
+		err = a.DB.QueryRow(r.Context(), "SELECT u.id,u.workspace_id,w.name,u.username,COALESCE(u.email,''),u.role,u.is_owner,u.session_version FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE u.id=$1", s.UserID).Scan(&u.ID, &u.WorkspaceID, &u.WorkspaceName, &u.Username, &u.Email, &u.Role, &u.IsOwner, &u.Version)
 		if err != nil || u.Version != s.Version {
 			problem(w, 401, "Session expired; sign in again")
 			return
@@ -72,7 +74,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 	if !decode(w, r, &in) {
@@ -80,13 +82,23 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	}
 	var u User
 	var hash string
-	err = a.DB.QueryRow(r.Context(), "SELECT u.id,u.workspace_id,w.name,u.username,u.role,u.is_owner,u.session_version,u.password_hash FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE u.username=$1", in.Username).Scan(&u.ID, &u.WorkspaceID, &u.WorkspaceName, &u.Username, &u.Role, &u.IsOwner, &u.Version, &hash)
+	var verified bool
+	email, emailErr := normalizeEmail(in.Email)
+	if emailErr == nil {
+		err = a.DB.QueryRow(r.Context(), "SELECT u.id,u.workspace_id,w.name,u.username,u.email,u.role,u.is_owner,u.session_version,u.password_hash,u.email_verified_at IS NOT NULL FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE lower(u.email)=$1", email).Scan(&u.ID, &u.WorkspaceID, &u.WorkspaceName, &u.Username, &u.Email, &u.Role, &u.IsOwner, &u.Version, &hash, &verified)
+	} else {
+		err = emailErr
+	}
 	if err != nil {
 		hash = "$2a$10$7EqJtq98hPqEX7fNZaFWoO5uTktUvMlPtVeziJo.Wu0cnP7eCFUXW"
 	}
 	passwordErr := bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password))
 	if err != nil || passwordErr != nil {
-		problem(w, 401, "Invalid username or password")
+		problem(w, 401, "Invalid email or password")
+		return
+	}
+	if !verified {
+		problem(w, 403, "Verify your email before signing in")
 		return
 	}
 	a.startSession(w, r, u, "auth.login")
@@ -101,6 +113,7 @@ func (a *App) signup(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Workspace string `json:"workspace"`
 		Username  string `json:"username"`
+		Email     string `json:"email"`
 		Password  string `json:"password"`
 	}
 	if !decode(w, r, &in) {
@@ -108,8 +121,9 @@ func (a *App) signup(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Workspace = strings.TrimSpace(in.Workspace)
 	in.Username = strings.TrimSpace(in.Username)
-	if len(in.Workspace) < 2 || len(in.Workspace) > 100 || len(in.Username) < 3 || len(in.Username) > 100 || len(in.Password) < 12 || len(in.Password) > 72 {
-		problem(w, 400, "Workspace must be 2–100 characters; username 3–100; password 12–72 bytes")
+	email, emailErr := normalizeEmail(in.Email)
+	if len(in.Workspace) < 2 || len(in.Workspace) > 100 || len(in.Username) < 3 || len(in.Username) > 100 || emailErr != nil || strongPassword(in.Password) != nil {
+		problem(w, 400, "Use a valid email, a 3–100 character username, a 2–100 character workspace, and a strong 10–72 byte password with uppercase, lowercase, number, and symbol")
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
@@ -124,23 +138,108 @@ func (a *App) signup(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var u User
-	u.WorkspaceName, u.Username, u.Role, u.IsOwner = in.Workspace, in.Username, "admin", true
+	u.WorkspaceName, u.Username, u.Email, u.Role, u.IsOwner = in.Workspace, in.Username, email, "admin", true
 	slug := "ws-" + secure.Digest(secure.Token())[:12]
+	verificationToken := secure.Token()
 	if err = tx.QueryRow(r.Context(), "INSERT INTO workspaces(name,slug) VALUES($1,$2) RETURNING id", in.Workspace, slug).Scan(&u.WorkspaceID); err == nil {
-		err = tx.QueryRow(r.Context(), "INSERT INTO users(workspace_id,username,password_hash,role,is_owner) VALUES($1,$2,$3,'admin',true) RETURNING id,session_version", u.WorkspaceID, in.Username, string(hash)).Scan(&u.ID, &u.Version)
+		err = tx.QueryRow(r.Context(), "INSERT INTO users(workspace_id,username,email,password_hash,role,is_owner) VALUES($1,$2,$3,$4,'admin',true) RETURNING id,session_version", u.WorkspaceID, in.Username, email, string(hash)).Scan(&u.ID, &u.Version)
 	}
 	if err == nil {
 		_, err = tx.Exec(r.Context(), "INSERT INTO settings(workspace_id) VALUES($1)", u.WorkspaceID)
 	}
 	if err == nil {
+		_, err = tx.Exec(r.Context(), "INSERT INTO email_verification_tokens(user_id,token_digest,expires_at) VALUES($1,$2,now()+interval '24 hours')", u.ID, secure.Digest(verificationToken))
+	}
+	if err == nil {
 		err = tx.Commit(r.Context())
 	}
 	if err != nil {
-		problem(w, 409, "Username is already in use")
+		problem(w, 409, "Email or username is already in use")
 		return
 	}
 	_ = a.record(r.Context(), u.WorkspaceID, u.ID, u.Username, "workspace.created", slug, map[string]string{"name": in.Workspace})
-	a.startSession(w, r, u, "auth.signup")
+	if err = a.Mailer.SendVerification(email, in.Username, verificationURL(a.Origin, verificationToken)); err != nil {
+		slog.Error("verification email delivery failed", "error", err, "user_id", u.ID)
+		problem(w, 503, "Account created, but the verification email could not be sent; use resend verification")
+		return
+	}
+	write(w, http.StatusAccepted, map[string]any{"verification_required": true, "message": "Check your email to verify your account"})
+}
+
+func (a *App) resendVerification(w http.ResponseWriter, r *http.Request) {
+	if !a.allowAttempt(r, "resend-verification", 5) {
+		w.Header().Set("Retry-After", "300")
+		problem(w, 429, "Too many requests; try again in five minutes")
+		return
+	}
+	var in struct {
+		Email string `json:"email"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	email, err := normalizeEmail(in.Email)
+	if err == nil {
+		var id int64
+		var username string
+		var verified bool
+		err = a.DB.QueryRow(r.Context(), "SELECT id,username,email_verified_at IS NOT NULL FROM users WHERE lower(email)=$1", email).Scan(&id, &username, &verified)
+		if err == nil && !verified {
+			token := secure.Token()
+			if _, err = a.DB.Exec(r.Context(), "UPDATE email_verification_tokens SET used_at=now() WHERE user_id=$1 AND used_at IS NULL", id); err == nil {
+				_, err = a.DB.Exec(r.Context(), "INSERT INTO email_verification_tokens(user_id,token_digest,expires_at) VALUES($1,$2,now()+interval '24 hours')", id, secure.Digest(token))
+			}
+			if err == nil {
+				if err = a.Mailer.SendVerification(email, username, verificationURL(a.Origin, token)); err != nil {
+					slog.Error("verification email resend failed", "error", err, "user_id", id)
+				}
+			}
+		}
+	}
+	write(w, http.StatusAccepted, map[string]string{"message": "If that address has an unverified account, a new verification email has been sent"})
+}
+
+func (a *App) verifyEmail(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
+		http.Redirect(w, r, "/?verification=invalid", http.StatusSeeOther)
+		return
+	}
+	tx, err := a.DB.Begin(r.Context())
+	if err != nil {
+		http.Redirect(w, r, "/?verification=invalid", http.StatusSeeOther)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var tokenID, userID, workspaceID int64
+	var username string
+	err = tx.QueryRow(r.Context(), `SELECT t.id,u.id,u.workspace_id,u.username FROM email_verification_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_digest=$1 AND t.used_at IS NULL AND t.expires_at>now() FOR UPDATE`, secure.Digest(token)).Scan(&tokenID, &userID, &workspaceID, &username)
+	if err == nil {
+		_, err = tx.Exec(r.Context(), "UPDATE users SET email_verified_at=COALESCE(email_verified_at,now()) WHERE id=$1", userID)
+	}
+	if err == nil {
+		_, err = tx.Exec(r.Context(), "UPDATE email_verification_tokens SET used_at=now() WHERE user_id=$1 AND used_at IS NULL", userID)
+	}
+	if err == nil {
+		err = tx.Commit(r.Context())
+	}
+	if err != nil {
+		http.Redirect(w, r, "/?verification=invalid", http.StatusSeeOther)
+		return
+	}
+	_ = a.record(r.Context(), workspaceID, userID, username, "auth.email_verified", strconv.FormatInt(tokenID, 10), nil)
+	http.Redirect(w, r, "/?verification=success", http.StatusSeeOther)
+}
+
+func (a *App) sendNewVerification(ctx context.Context, userID int64, email, username string) error {
+	token := secure.Token()
+	if _, err := a.DB.Exec(ctx, "UPDATE email_verification_tokens SET used_at=now() WHERE user_id=$1 AND used_at IS NULL", userID); err != nil {
+		return err
+	}
+	if _, err := a.DB.Exec(ctx, "INSERT INTO email_verification_tokens(user_id,token_digest,expires_at) VALUES($1,$2,now()+interval '24 hours')", userID, secure.Digest(token)); err != nil {
+		return err
+	}
+	return a.Mailer.SendVerification(email, username, verificationURL(a.Origin, token))
 }
 
 func (a *App) startSession(w http.ResponseWriter, r *http.Request, u User, action string) {

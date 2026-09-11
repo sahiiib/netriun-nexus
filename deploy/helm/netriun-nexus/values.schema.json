@@ -26,11 +26,21 @@
     },
     "config": {
       "type": "object",
-      "required": ["appOrigin", "cookieSecure", "trustedProxyCidrs"],
+      "required": ["appOrigin", "cookieSecure", "trustedProxyCidrs", "smtp"],
       "properties": {
         "appOrigin": { "type": "string", "format": "uri", "pattern": "^https://" },
         "cookieSecure": { "type": "string", "const": "true" },
-        "trustedProxyCidrs": { "type": "string" }
+        "trustedProxyCidrs": { "type": "string" },
+        "smtp": {
+          "type": "object",
+          "required": ["host", "port", "fromAddress", "fromName"],
+          "properties": {
+            "host": { "type": "string", "minLength": 1 },
+            "port": { "type": "string", "pattern": "^[0-9]+$" },
+            "fromAddress": { "type": "string", "format": "email" },
+            "fromName": { "type": "string", "minLength": 1 }
+          }
+        }
       }
     }
   }

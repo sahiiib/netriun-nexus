@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Netriun Nexus API",
-    "version": "1.1.0",
-    "description": "Multi-tenant workspace API. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. Account creation requires credentials; PUT account requests may omit credentials to preserve them."
+    "version": "1.2.0",
+    "description": "Multi-tenant workspace API with verified-email authentication. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. Account creation requires credentials; PUT account requests may omit credentials to preserve them."
   },
   "servers": [
     {
@@ -68,7 +68,7 @@
     },
     "/auth/signup": {
       "post": {
-        "summary": "Create an isolated Community workspace and owner session",
+        "summary": "Create an isolated Community workspace and send owner email verification",
         "requestBody": {
           "required": true,
           "content": {
@@ -80,14 +80,14 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Workspace created; returns token, owner, expires_in and session cookie"
+          "202": {
+            "description": "Workspace created; email verification is required before sign-in"
           },
           "400": {
             "description": "Invalid request"
           },
           "409": {
-            "description": "Username already in use"
+            "description": "Email or username already in use"
           },
           "429": {
             "description": "Sign-up rate limit exceeded"
@@ -95,6 +95,29 @@
           "503": {
             "description": "Dependency unavailable"
           }
+        },
+        "security": []
+      }
+    },
+    "/auth/resend-verification": {
+      "post": {
+        "summary": "Request a replacement email-verification link",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": { "email": { "type": "string", "format": "email" } },
+                "required": ["email"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": { "description": "Generic response returned whether or not the account exists" },
+          "429": { "description": "Rate limit exceeded" }
         },
         "security": []
       }
@@ -1450,15 +1473,16 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "username": {
-            "type": "string"
+          "email": {
+            "type": "string",
+            "format": "email"
           },
           "password": {
             "type": "string"
           }
         },
         "required": [
-          "username",
+          "email",
           "password"
         ]
       },
@@ -1476,15 +1500,21 @@
             "minLength": 3,
             "maxLength": 100
           },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
           "password": {
             "type": "string",
-            "minLength": 12,
+            "minLength": 10,
             "maxLength": 72
           }
         },
         "required": [
           "workspace",
           "username",
+          "email",
           "password"
         ]
       },
@@ -1497,8 +1527,14 @@
             "minLength": 3,
             "maxLength": 100
           },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
           "password": {
             "type": "string",
+            "minLength": 10,
             "maxLength": 72
           },
           "role": {
@@ -1511,6 +1547,7 @@
         },
         "required": [
           "username",
+          "email",
           "role"
         ]
       },

@@ -1,0 +1,14 @@
+.auth-notice {
+  max-width: 350px;
+  padding: 11px 13px;
+  border: 1px solid #b9d7ae;
+  border-radius: 6px;
+  background: #eff8eb;
+  color: #32704d;
+  font-size: 12px;
+}
+
+.login-panel #resend-button {
+  width: 100%;
+  margin-top: -13px;
+}

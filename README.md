@@ -62,15 +62,15 @@ Only workspace administrators edit group policies, users, collection settings, a
 ```sh
 curl -X POST http://localhost:8080/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"YOUR_PASSWORD"}'
+  -d '{"email":"admin@example.com","password":"YOUR_PASSWORD"}'
 
 curl http://localhost:8080/api/v1/instances?state=running \
   -H 'Authorization: Bearer YOUR_TOKEN'
 ```
 
-Create a free isolated workspace with `POST /api/v1/auth/signup` and `{"workspace":"Team name","username":"owner","password":"12+ characters"}`. Usernames are globally unique in this release.
+Create a free isolated workspace with `POST /api/v1/auth/signup` and `{"workspace":"Team name","username":"owner","email":"owner@example.com","password":"Strong-password1!"}`. Email addresses and usernames are globally unique. A 24-hour verification link is sent by email, and sign-in remains disabled until it is used.
 
-Login returns a token valid for 12 hours and an HttpOnly session cookie. Lists use `{"data": [...]}`. Errors use `{"error":"message"}`. Inventory and audit lists support `limit` (default 50, maximum 200) and `offset`.
+Login uses the verified email address and returns a token valid for 12 hours plus an HttpOnly session cookie. Passwords must be 10–72 bytes and contain uppercase, lowercase, a number, and a symbol. Lists use `{"data": [...]}`. Errors use `{"error":"message"}`. Inventory and audit lists support `limit` (default 50, maximum 200) and `offset`.
 
 ## AWS access
 
@@ -83,6 +83,8 @@ Use a dedicated RAM user AccessKey, not a root-account AccessKey. ECS inventory 
 ## Go development
 
 Go version is declared in `go.mod`. `make run` loads `.env`, starts PostgreSQL and Redis in containers, stops the Compose application service to prevent two collectors from writing concurrently, and runs the Go process on `http://localhost:8080`. It derives host-reachable database URLs from the Compose passwords, using local ports `15432` and `16379` by default.
+
+Email verification uses SMTP with mandatory STARTTLS. Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_ADDRESS`, and `SMTP_FROM_NAME`; use an app password rather than a primary mailbox password.
 
 ```sh
 make run

@@ -8,11 +8,21 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+type fakeMailer struct {
+	lastURL string
+}
+
+func (m *fakeMailer) SendVerification(_, _, verifyURL string) error {
+	m.lastURL = verifyURL
+	return nil
+}
 
 // Only enable against an isolated test database. This test truncates application tables.
 func TestIntegration(t *testing.T) {
@@ -28,7 +38,14 @@ func TestIntegration(t *testing.T) {
 	t.Setenv("REDIS_URL", redisURL)
 	t.Setenv("ENCRYPTION_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
 	t.Setenv("ADMIN_USERNAME", "testadmin")
-	t.Setenv("ADMIN_PASSWORD", "test-admin-password")
+	t.Setenv("ADMIN_EMAIL", "testadmin@example.com")
+	t.Setenv("ADMIN_PASSWORD", "Test-admin-password1!")
+	t.Setenv("SMTP_HOST", "smtp.example.com")
+	t.Setenv("SMTP_PORT", "587")
+	t.Setenv("SMTP_USERNAME", "sender@example.com")
+	t.Setenv("SMTP_PASSWORD", "smtp-password")
+	t.Setenv("SMTP_FROM_ADDRESS", "sender@example.com")
+	t.Setenv("SMTP_FROM_NAME", "Netriun Nexus")
 	t.Setenv("COOKIE_SECURE", "false")
 	t.Setenv("APP_ORIGIN", "http://localhost:8080")
 	ctx := context.Background()
@@ -36,6 +53,8 @@ func TestIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mailer := &fakeMailer{}
+	a.Mailer = mailer
 	defer a.Close()
 	if _, err = a.DB.Exec(ctx, "TRUNCATE workspaces RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatal(err)
@@ -72,9 +91,9 @@ func TestIntegration(t *testing.T) {
 		}
 		return w
 	}
-	login := func(name, password string) string {
+	login := func(email, password string) string {
 		t.Helper()
-		w := request("POST", "/api/v1/auth/login", "", map[string]string{"username": name, "password": password}, 200)
+		w := request("POST", "/api/v1/auth/login", "", map[string]string{"email": email, "password": password}, 200)
 		var out struct {
 			Token string `json:"token"`
 		}
@@ -88,15 +107,13 @@ func TestIntegration(t *testing.T) {
 		}
 		return out.Token
 	}
-	tokenFrom := func(w *httptest.ResponseRecorder) string {
+	verifyLatest := func() {
 		t.Helper()
-		var out struct {
-			Token string `json:"token"`
+		parsed, parseErr := url.Parse(mailer.lastURL)
+		if parseErr != nil || parsed.Query().Get("token") == "" {
+			t.Fatalf("missing verification URL: %q err=%v", mailer.lastURL, parseErr)
 		}
-		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || out.Token == "" {
-			t.Fatalf("missing token: %v %s", err, w.Body.String())
-		}
-		return out.Token
+		request("GET", "/verify-email?token="+url.QueryEscape(parsed.Query().Get("token")), "", nil, http.StatusSeeOther)
 	}
 	idFrom := func(w *httptest.ResponseRecorder) int64 {
 		t.Helper()
@@ -109,11 +126,12 @@ func TestIntegration(t *testing.T) {
 		return v.ID
 	}
 	request("GET", "/api/v1/instances", "", nil, 401)
-	request("POST", "/api/v1/auth/login", "", map[string]string{"username": "testadmin", "password": "wrong"}, 401)
-	adminToken := login("testadmin", "test-admin-password")
+	request("POST", "/api/v1/auth/login", "", map[string]string{"email": "testadmin@example.com", "password": "wrong"}, 401)
+	adminToken := login("testadmin@example.com", "Test-admin-password1!")
 	group1 := idFrom(request("POST", "/api/v1/groups", adminToken, map[string]any{"name": "Team A", "view_dashboard": true, "manage_cloud_accounts": true, "manage_group_members": true}, 200))
 	group2 := idFrom(request("POST", "/api/v1/groups", adminToken, map[string]any{"name": "Team B", "view_dashboard": true}, 200))
-	uid := idFrom(request("POST", "/api/v1/users", adminToken, map[string]string{"username": "viewer", "password": "viewer-password-123", "role": "user"}, 200))
+	uid := idFrom(request("POST", "/api/v1/users", adminToken, map[string]string{"username": "viewer", "email": "viewer@example.com", "password": "Viewer-password1!", "role": "user"}, 200))
+	verifyLatest()
 	request("PUT", fmt.Sprintf("/api/v1/groups/%d/members/%d", group1, uid), adminToken, map[string]string{"role": "viewer"}, 200)
 	acct := func(name string, gid int64) int64 {
 		return idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": name, "owner": "Platform", "group_id": gid, "regions": []string{"us-east-1"}, "credentials": map[string]string{"access_key_id": "test-key", "secret_access_key": "secret-must-not-leak"}}, 200))
@@ -125,7 +143,10 @@ func TestIntegration(t *testing.T) {
 		t.Fatalf("Alibaba connection was not stored safely: provider=%q err=%v", alibabaProvider, err)
 	}
 	request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Invalid Alibaba", "provider": "alibaba", "regions": []string{"not a region"}, "credentials": map[string]string{"access_key_id": "key", "secret_access_key": "secret"}}, 400)
-	secondOwner := tokenFrom(request("POST", "/api/v1/auth/signup", "", map[string]string{"workspace": "Independent Lab", "username": "second-owner", "password": "second-owner-password"}, 200))
+	request("POST", "/api/v1/auth/signup", "", map[string]string{"workspace": "Independent Lab", "username": "second-owner", "email": "second-owner@example.com", "password": "Second-owner-password1!"}, http.StatusAccepted)
+	request("POST", "/api/v1/auth/login", "", map[string]string{"email": "second-owner@example.com", "password": "Second-owner-password1!"}, 403)
+	verifyLatest()
+	secondOwner := login("second-owner@example.com", "Second-owner-password1!")
 	secondGroup := idFrom(request("POST", "/api/v1/groups", secondOwner, map[string]any{"name": "Team A", "view_dashboard": true}, 200))
 	secondAccount := idFrom(request("POST", "/api/v1/accounts", secondOwner, map[string]any{"name": "Account A", "provider": "aws", "group_id": secondGroup, "regions": []string{"us-east-1"}, "credentials": map[string]string{"access_key_id": "tenant-two", "secret_access_key": "isolated-secret"}}, 200))
 	var i1, i2 int64
@@ -150,7 +171,7 @@ func TestIntegration(t *testing.T) {
 	if strings.Contains(tenantCheck.Body.String(), "testadmin") {
 		t.Fatal("cross-workspace audit data leaked")
 	}
-	viewer := login("viewer", "viewer-password-123")
+	viewer := login("viewer@example.com", "Viewer-password1!")
 	w := request("GET", "/api/v1/accounts", viewer, nil, 200)
 	if strings.Contains(w.Body.String(), "secret") || strings.Contains(w.Body.String(), "credentials") || strings.Contains(w.Body.String(), "Account B") || strings.Contains(w.Body.String(), "Alibaba Production") {
 		t.Fatal("account data leakage")
@@ -219,7 +240,7 @@ func TestIntegration(t *testing.T) {
 	if w.Code != 403 {
 		t.Fatal("cross-origin mutation allowed")
 	}
-	request("PUT", fmt.Sprintf("/api/v1/users/%d", uid), adminToken, map[string]string{"username": "viewer", "password": "changed-password-123", "role": "user"}, 200)
+	request("PUT", fmt.Sprintf("/api/v1/users/%d", uid), adminToken, map[string]string{"username": "viewer", "email": "viewer@example.com", "password": "Changed-password1!", "role": "user"}, 200)
 	request("GET", "/api/v1/auth/me", viewer, nil, 401)
 	request("PUT", "/api/v1/settings", adminToken, map[string]int{"collector_interval_minutes": 0, "audit_retention_days": 90}, 400)
 	request("POST", "/api/v1/collector/run", adminToken, map[string]any{}, 202)
@@ -246,9 +267,9 @@ func TestIntegration(t *testing.T) {
 		t.Fatalf("AWS action did not fail closed when audit storage was unavailable: %d %s", w.Code, w.Body.String())
 	}
 	for i := 0; i < 4; i++ {
-		request("POST", "/api/v1/users", adminToken, map[string]string{"username": fmt.Sprintf("member-%d", i), "password": "member-password-123", "role": "user"}, 200)
+		request("POST", "/api/v1/users", adminToken, map[string]string{"username": fmt.Sprintf("member-%d", i), "email": fmt.Sprintf("member-%d@example.com", i), "password": "Member-password1!", "role": "user"}, 200)
 	}
-	request("POST", "/api/v1/users", adminToken, map[string]string{"username": "member-over-limit", "password": "member-password-123", "role": "user"}, 409)
+	request("POST", "/api/v1/users", adminToken, map[string]string{"username": "member-over-limit", "email": "member-over-limit@example.com", "password": "Member-password1!", "role": "user"}, 409)
 	// An existing collector lease prevents an overlapping run, with no AWS call.
 	a.Redis.Set(ctx, collectorKey("lock", workspaceID), "other-worker", time.Minute)
 	if err = a.Collect(ctx, workspaceID); err != nil {
@@ -271,9 +292,9 @@ func TestIntegration(t *testing.T) {
 	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") {
 		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
 	}
-	// Rate limiting is atomic and independent of username.
+	// Rate limiting is atomic and independent of email.
 	for i := 0; i < 21; i++ {
-		r := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"username":"none","password":"bad"}`))
+		r := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"email":"none@example.com","password":"bad"}`))
 		r.RemoteAddr = "198.51.100.42:1234"
 		r.Header.Set("Content-Type", "application/json")
 		w = httptest.NewRecorder()

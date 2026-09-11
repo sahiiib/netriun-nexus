@@ -14,8 +14,15 @@ kubectl create secret generic netriun-nexus \
   --from-literal=REDIS_URL='redis://...' \
   --from-literal=ENCRYPTION_KEY='...' \
   --from-literal=ADMIN_USERNAME='admin' \
-  --from-literal=ADMIN_PASSWORD='...'
+  --from-literal=ADMIN_EMAIL='admin@example.com' \
+  --from-literal=ADMIN_PASSWORD='...' \
+  --from-literal=SMTP_USERNAME='sender@example.com' \
+  --from-literal=SMTP_PASSWORD='...'
 ```
+
+SMTP server, port, sender address, and sender display name are non-secret chart
+values under `config.smtp`. Keep the SMTP app password only in the existing
+Kubernetes Secret.
 
 When the bundled local PostgreSQL and Redis instances are enabled, the same
 Secret must also contain `POSTGRES_PASSWORD` and `REDIS_PASSWORD`.

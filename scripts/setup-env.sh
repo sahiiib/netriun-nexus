@@ -8,7 +8,7 @@ fi
 umask 077
 database_password=$(openssl rand -hex 24)
 redis_password=$(openssl rand -hex 24)
-admin_password=$(openssl rand -hex 16)
+admin_password="Nn!$(openssl rand -hex 14)7"
 encryption_key=$(openssl rand -base64 32)
 cat > .env <<EOF
 HTTP_ADDR=:8080
@@ -24,7 +24,14 @@ POSTGRES_PASSWORD=${database_password}
 REDIS_PASSWORD=${redis_password}
 ENCRYPTION_KEY=${encryption_key}
 ADMIN_USERNAME=admin
+ADMIN_EMAIL=${ADMIN_EMAIL:-admin@localhost}
 ADMIN_PASSWORD=${admin_password}
+SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+SMTP_PORT=${SMTP_PORT:-587}
+SMTP_USERNAME=${SMTP_USERNAME:-sender@example.com}
+SMTP_PASSWORD=${SMTP_PASSWORD:-replace-with-smtp-app-password}
+SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS:-sender@example.com}
+SMTP_FROM_NAME="${SMTP_FROM_NAME:-Netriun Nexus}"
 EOF
 echo 'Created .env with independent random passwords and an encryption key.'
 echo 'Read ADMIN_PASSWORD in .env to sign in as admin.'

@@ -32,12 +32,14 @@ type App struct {
 	SecureCookies  bool
 	Origin         string
 	TrustedProxies []*net.IPNet
+	Mailer         mailSender
 }
 type User struct {
 	ID            int64  `json:"id"`
 	WorkspaceID   int64  `json:"-"`
 	WorkspaceName string `json:"workspace"`
 	Username      string `json:"username"`
+	Email         string `json:"email"`
 	Role          string `json:"role"`
 	IsOwner       bool   `json:"is_owner"`
 	Version       int    `json:"-"`
@@ -73,7 +75,11 @@ func New(ctx context.Context) (*App, error) {
 		rc.Close()
 		return fail(err)
 	}
-	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies}
+	mailer, err := newSMTPSender(cfg)
+	if err != nil {
+		return fail(err)
+	}
+	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer}
 	if err = a.migrate(ctx); err != nil {
 		a.Close()
 		return nil, err
@@ -86,7 +92,8 @@ func New(ctx context.Context) (*App, error) {
 }
 func (a *App) Close() { a.DB.Close(); a.Redis.Close() }
 func (a *App) bootstrap(ctx context.Context) error {
-	name, pass := os.Getenv("ADMIN_USERNAME"), os.Getenv("ADMIN_PASSWORD")
+	name, pass := strings.TrimSpace(os.Getenv("ADMIN_USERNAME")), os.Getenv("ADMIN_PASSWORD")
+	email, emailErr := normalizeEmail(os.Getenv("ADMIN_EMAIL"))
 	var count int
 	if err := a.DB.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&count); err != nil {
 		return err
@@ -94,8 +101,8 @@ func (a *App) bootstrap(ctx context.Context) error {
 	if count > 0 {
 		return nil
 	}
-	if len(name) < 3 || len(pass) < 12 || len(pass) > 72 {
-		return errors.New("first boot requires ADMIN_USERNAME (3+ characters) and ADMIN_PASSWORD (12–72 bytes)")
+	if len(name) < 3 || len(name) > 100 || emailErr != nil || strongPassword(pass) != nil {
+		return errors.New("first boot requires ADMIN_USERNAME, ADMIN_EMAIL, and a strong ADMIN_PASSWORD of 10–72 bytes")
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
 	if err != nil {
@@ -110,7 +117,7 @@ func (a *App) bootstrap(ctx context.Context) error {
 	if err = tx.QueryRow(ctx, "INSERT INTO workspaces(name,slug) VALUES('Netriun Nexus Workspace','default') RETURNING id").Scan(&workspaceID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO users(workspace_id,username,password_hash,role,is_owner) VALUES($1,$2,$3,'admin',true)", workspaceID, name, string(hash)); err != nil {
+	if _, err = tx.Exec(ctx, "INSERT INTO users(workspace_id,username,email,email_verified_at,password_hash,role,is_owner) VALUES($1,$2,$3,now(),$4,'admin',true)", workspaceID, name, email, string(hash)); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(ctx, "INSERT INTO settings(workspace_id) VALUES($1)", workspaceID); err != nil {
@@ -203,6 +210,8 @@ func (a *App) Handler() http.Handler {
 	})
 	m.HandleFunc("POST /api/v1/auth/login", a.login)
 	m.HandleFunc("POST /api/v1/auth/signup", a.signup)
+	m.HandleFunc("POST /api/v1/auth/resend-verification", a.resendVerification)
+	m.HandleFunc("GET /verify-email", a.verifyEmail)
 	routes := map[string]http.HandlerFunc{
 		"GET /api/v1/summary":      a.summary,
 		"GET /api/v1/auth/me":      func(w http.ResponseWriter, r *http.Request) { write(w, 200, current(r)) },

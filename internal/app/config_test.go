@@ -49,6 +49,12 @@ func TestRuntimeConfigValidation(t *testing.T) {
 	t.Setenv("APP_ORIGIN", "http://localhost:8080/")
 	t.Setenv("COOKIE_SECURE", "false")
 	t.Setenv("TRUSTED_PROXY_CIDRS", "")
+	t.Setenv("SMTP_HOST", "smtp.example.com")
+	t.Setenv("SMTP_PORT", "587")
+	t.Setenv("SMTP_USERNAME", "sender@example.com")
+	t.Setenv("SMTP_PASSWORD", "smtp-password")
+	t.Setenv("SMTP_FROM_ADDRESS", "sender@example.com")
+	t.Setenv("SMTP_FROM_NAME", "Netriun Nexus")
 	cfg, err := loadRuntimeConfig()
 	if err != nil || cfg.origin != "http://localhost:8080" || cfg.secureCookies {
 		t.Fatalf("valid local config rejected: cfg=%+v err=%v", cfg, err)

@@ -9,3 +9,7 @@ data:
   APP_ORIGIN: {{ required "config.appOrigin is required" .Values.config.appOrigin | quote }}
   COOKIE_SECURE: {{ .Values.config.cookieSecure | quote }}
   TRUSTED_PROXY_CIDRS: {{ .Values.config.trustedProxyCidrs | quote }}
+  SMTP_HOST: {{ .Values.config.smtp.host | quote }}
+  SMTP_PORT: {{ .Values.config.smtp.port | quote }}
+  SMTP_FROM_ADDRESS: {{ .Values.config.smtp.fromAddress | quote }}
+  SMTP_FROM_NAME: {{ .Values.config.smtp.fromName | quote }}

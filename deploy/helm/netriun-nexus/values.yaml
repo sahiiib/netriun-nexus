@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: sahiiib/netriun-nexus
-  tag: "0.1.6"
+  tag: "0.1.8"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -54,9 +54,15 @@ config:
   appOrigin: https://nexus.netriun.com
   cookieSecure: "true"
   trustedProxyCidrs: ""
+  smtp:
+    host: smtp.gmail.com
+    port: "587"
+    fromAddress: s.amrei@netriun.com
+    fromName: Netriun Nexus
 
 # Create this Secret before installation. It must contain DATABASE_URL,
-# REDIS_URL, ENCRYPTION_KEY, ADMIN_USERNAME, and ADMIN_PASSWORD.
+# REDIS_URL, ENCRYPTION_KEY, ADMIN_USERNAME, ADMIN_EMAIL, ADMIN_PASSWORD,
+# SMTP_USERNAME, and SMTP_PASSWORD.
 existingSecret: netriun-nexus
 
 resources:

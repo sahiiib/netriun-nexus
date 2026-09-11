@@ -10,12 +10,18 @@ import (
 )
 
 type runtimeConfig struct {
-	databaseURL    string
-	redisURL       string
-	encryptionKey  string
-	origin         string
-	secureCookies  bool
-	trustedProxies []*net.IPNet
+	databaseURL     string
+	redisURL        string
+	encryptionKey   string
+	origin          string
+	secureCookies   bool
+	trustedProxies  []*net.IPNet
+	smtpHost        string
+	smtpPort        string
+	smtpUsername    string
+	smtpPassword    string
+	smtpFromAddress string
+	smtpFromName    string
 }
 
 func loadRuntimeConfig() (runtimeConfig, error) {
@@ -25,6 +31,19 @@ func loadRuntimeConfig() (runtimeConfig, error) {
 	c.encryptionKey = strings.TrimSpace(os.Getenv("ENCRYPTION_KEY"))
 	if c.databaseURL == "" || c.redisURL == "" || c.encryptionKey == "" {
 		return c, errors.New("DATABASE_URL, REDIS_URL and ENCRYPTION_KEY are required")
+	}
+	c.smtpHost = strings.TrimSpace(os.Getenv("SMTP_HOST"))
+	c.smtpPort = strings.TrimSpace(os.Getenv("SMTP_PORT"))
+	c.smtpUsername = strings.TrimSpace(os.Getenv("SMTP_USERNAME"))
+	c.smtpPassword = strings.TrimSpace(os.Getenv("SMTP_PASSWORD"))
+	c.smtpFromAddress = strings.TrimSpace(os.Getenv("SMTP_FROM_ADDRESS"))
+	c.smtpFromName = strings.TrimSpace(os.Getenv("SMTP_FROM_NAME"))
+	if c.smtpHost == "" || c.smtpPort == "" || c.smtpUsername == "" || c.smtpPassword == "" || c.smtpFromAddress == "" || c.smtpFromName == "" {
+		return c, errors.New("SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM_ADDRESS and SMTP_FROM_NAME are required")
+	}
+	port, portErr := strconv.Atoi(c.smtpPort)
+	if portErr != nil || port < 1 || port > 65535 {
+		return c, errors.New("SMTP_PORT must be a valid TCP port")
 	}
 
 	origin, err := url.Parse(strings.TrimSpace(os.Getenv("APP_ORIGIN")))

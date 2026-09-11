@@ -74,7 +74,7 @@ func (a *App) users(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := current(r)
-	a.list(w, r, "SELECT row_to_json(t) FROM (SELECT u.id,u.username,u.role,u.is_owner,u.created_at,w.user_limit,(SELECT count(*) FROM users own WHERE own.workspace_id=u.workspace_id) AS workspace_user_count FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE u.workspace_id=$1 ORDER BY u.is_owner DESC,u.username) t", u.WorkspaceID)
+	a.list(w, r, "SELECT row_to_json(t) FROM (SELECT u.id,u.username,COALESCE(u.email,'') AS email,u.email_verified_at IS NOT NULL AS email_verified,u.role,u.is_owner,u.created_at,w.user_limit,(SELECT count(*) FROM users own WHERE own.workspace_id=u.workspace_id) AS workspace_user_count FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE u.workspace_id=$1 ORDER BY u.is_owner DESC,u.username) t", u.WorkspaceID)
 }
 func (a *App) saveUser(w http.ResponseWriter, r *http.Request) {
 	if !admin(w, r) {
@@ -82,6 +82,7 @@ func (a *App) saveUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 		Role     string `json:"role"`
 	}
@@ -89,12 +90,13 @@ func (a *App) saveUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.Username = strings.TrimSpace(in.Username)
-	if len(in.Username) < 3 || len(in.Username) > 100 || (in.Role != "admin" && in.Role != "user") {
-		problem(w, 400, "Username must be 3–100 characters; role must be admin or user")
+	email, emailErr := normalizeEmail(in.Email)
+	if len(in.Username) < 3 || len(in.Username) > 100 || emailErr != nil || (in.Role != "admin" && in.Role != "user") {
+		problem(w, 400, "A valid email, a 3–100 character username, and an admin or user role are required")
 		return
 	}
-	if (r.Method == "POST" || in.Password != "") && (len(in.Password) < 12 || len(in.Password) > 72) {
-		problem(w, 400, "Password must be 12–72 bytes")
+	if (r.Method == "POST" || in.Password != "") && strongPassword(in.Password) != nil {
+		problem(w, 400, "Password must be 10–72 bytes and include uppercase, lowercase, a number, and a symbol")
 		return
 	}
 	var hash string
@@ -108,6 +110,7 @@ func (a *App) saveUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var id int64
 	var err error
+	emailChanged := r.Method == "POST"
 	if r.Method == "POST" {
 		tx, beginErr := a.DB.Begin(r.Context())
 		if beginErr != nil {
@@ -124,7 +127,7 @@ func (a *App) saveUser(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if err == nil {
-			err = tx.QueryRow(r.Context(), "INSERT INTO users(workspace_id,username,password_hash,role) VALUES($1,$2,$3,$4) RETURNING id", current(r).WorkspaceID, in.Username, hash, in.Role).Scan(&id)
+			err = tx.QueryRow(r.Context(), "INSERT INTO users(workspace_id,username,email,password_hash,role) VALUES($1,$2,$3,$4,$5) RETURNING id", current(r).WorkspaceID, in.Username, email, hash, in.Role).Scan(&id)
 		}
 		if err == nil {
 			err = tx.Commit(r.Context())
@@ -136,7 +139,9 @@ func (a *App) saveUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var isOwner bool
-		if err = a.DB.QueryRow(r.Context(), "SELECT is_owner FROM users WHERE id=$1 AND workspace_id=$2", id, current(r).WorkspaceID).Scan(&isOwner); err != nil {
+		var oldEmail string
+		var emailVerified bool
+		if err = a.DB.QueryRow(r.Context(), "SELECT is_owner,COALESCE(email,''),email_verified_at IS NOT NULL FROM users WHERE id=$1 AND workspace_id=$2", id, current(r).WorkspaceID).Scan(&isOwner, &oldEmail, &emailVerified); err != nil {
 			dbError(w, err)
 			return
 		}
@@ -148,13 +153,20 @@ func (a *App) saveUser(w http.ResponseWriter, r *http.Request) {
 			problem(w, 400, "You cannot demote your own administrator account")
 			return
 		}
-		err = a.DB.QueryRow(r.Context(), "UPDATE users SET username=$1,password_hash=CASE WHEN $2='' THEN password_hash ELSE $2 END,role=$3,session_version=session_version+1 WHERE id=$4 AND workspace_id=$5 RETURNING id", in.Username, hash, in.Role, id, current(r).WorkspaceID).Scan(&id)
+		emailChanged = !strings.EqualFold(oldEmail, email) || !emailVerified
+		err = a.DB.QueryRow(r.Context(), "UPDATE users SET username=$1,email=$2,email_verified_at=CASE WHEN lower(COALESCE(email,''))=lower($2) THEN email_verified_at ELSE NULL END,password_hash=CASE WHEN $3='' THEN password_hash ELSE $3 END,role=$4,session_version=session_version+1 WHERE id=$5 AND workspace_id=$6 RETURNING id", in.Username, email, hash, in.Role, id, current(r).WorkspaceID).Scan(&id)
 	}
 	if err != nil {
 		dbError(w, err)
 		return
 	}
-	a.audit(r, "user.saved", strconv.FormatInt(id, 10), map[string]string{"username": in.Username, "role": in.Role})
+	a.audit(r, "user.saved", strconv.FormatInt(id, 10), map[string]string{"username": in.Username, "email": email, "role": in.Role})
+	if emailChanged {
+		if err = a.sendNewVerification(r.Context(), id, email, in.Username); err != nil {
+			problem(w, 503, "User saved, but the verification email could not be sent; try saving the address again")
+			return
+		}
+	}
 	write(w, 200, map[string]int64{"id": id})
 }
 func (a *App) deleteUser(w http.ResponseWriter, r *http.Request) {

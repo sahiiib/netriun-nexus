@@ -2,7 +2,7 @@ fullnameOverride: nexus
 
 image:
   repository: sahiiib/netriun-nexus
-  tag: "0.1.6"
+  tag: "0.1.8"
   pullPolicy: IfNotPresent
 
 service:
@@ -20,6 +20,11 @@ config:
   appOrigin: https://nexus.netriun.com
   cookieSecure: "true"
   trustedProxyCidrs: "10.244.0.0/16"
+  smtp:
+    host: smtp.gmail.com
+    port: "587"
+    fromAddress: s.amrei@netriun.com
+    fromName: Netriun Nexus
 
 existingSecret: netriun-nexus
 
