@@ -143,6 +143,20 @@ func TestIntegration(t *testing.T) {
 		t.Fatalf("Alibaba connection was not stored safely: provider=%q err=%v", alibabaProvider, err)
 	}
 	request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Invalid Alibaba", "provider": "alibaba", "regions": []string{"not a region"}, "credentials": map[string]string{"access_key_id": "key", "secret_access_key": "secret"}}, 400)
+	cloudUUID := "11111111-1111-4111-8111-111111111111"
+	azureAccount := idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Azure Production", "provider": "azure", "owner": "Platform", "group_id": group2, "regions": []string{"eastus"}, "credentials": map[string]string{"tenant_id": cloudUUID, "client_id": cloudUUID, "client_secret": "azure-secret", "subscription_id": cloudUUID}}, 200))
+	gcpAccount := idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "GCP Production", "provider": "gcp", "owner": "Platform", "group_id": group2, "regions": []string{"europe-west1"}, "credentials": map[string]string{"project_id": "example-project", "service_account_json": validGCPServiceAccountJSON(t)}}, 200))
+	for _, providerAccount := range []struct {
+		id       int64
+		provider string
+		secret   string
+	}{{azureAccount, "azure", "azure-secret"}, {gcpAccount, "gcp", "PRIVATE KEY"}} {
+		var provider, encrypted string
+		if err = a.DB.QueryRow(ctx, "SELECT provider,credentials FROM cloud_accounts WHERE id=$1", providerAccount.id).Scan(&provider, &encrypted); err != nil || provider != providerAccount.provider || strings.Contains(encrypted, providerAccount.secret) {
+			t.Fatalf("%s connection was not stored safely: provider=%q err=%v", providerAccount.provider, provider, err)
+		}
+		request("DELETE", fmt.Sprintf("/api/v1/accounts/%d", providerAccount.id), adminToken, nil, 200)
+	}
 	request("POST", "/api/v1/auth/signup", "", map[string]string{"workspace": "Independent Lab", "username": "second-owner", "email": "second-owner@example.com", "password": "Second-owner-password1!"}, http.StatusAccepted)
 	request("POST", "/api/v1/auth/login", "", map[string]string{"email": "second-owner@example.com", "password": "Second-owner-password1!"}, 403)
 	verifyLatest()

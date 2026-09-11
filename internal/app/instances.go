@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	ecs "github.com/alibabacloud-go/ecs-20140526/v7/client"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/netriun/nexus/internal/cloud"
@@ -67,6 +68,20 @@ func (a *App) alibabaClient(ctx context.Context, workspaceID, accountID int64, r
 	}
 	return cloud.AlibabaClient(region, c.AccessKey, c.SecretKey, c.SessionToken)
 }
+func (a *App) azureClient(ctx context.Context, workspaceID, accountID int64) (*cloud.AzureClient, error) {
+	c, err := a.credentials(ctx, workspaceID, accountID, "azure")
+	if err != nil {
+		return nil, err
+	}
+	return cloud.NewAzureClient(ctx, c.TenantID, c.ClientID, c.ClientSecret, c.SubscriptionID)
+}
+func (a *App) gcpClient(ctx context.Context, workspaceID, accountID int64) (*cloud.GCPClient, error) {
+	c, err := a.credentials(ctx, workspaceID, accountID, "gcp")
+	if err != nil {
+		return nil, err
+	}
+	return cloud.NewGCPClient(ctx, c.ProjectID, c.ServiceAccountJSON)
+}
 func (a *App) instance(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -94,18 +109,33 @@ func (a *App) instance(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
 	var details map[string]any
-	if provider == "aws" {
+	switch provider {
+	case "aws":
 		var c *ec2.Client
 		c, err = a.awsClient(ctx, current(r).WorkspaceID, accountID, region)
 		if err == nil {
 			details, err = cloud.Details(ctx, c, iid)
 		}
-	} else {
+	case "alibaba":
 		var c *ecs.Client
 		c, err = a.alibabaClient(ctx, current(r).WorkspaceID, accountID, region)
 		if err == nil {
 			details, err = cloud.AlibabaDetails(ctx, c, region, iid)
 		}
+	case "azure":
+		var c *cloud.AzureClient
+		c, err = a.azureClient(ctx, current(r).WorkspaceID, accountID)
+		if err == nil {
+			details, err = cloud.AzureDetails(ctx, c, iid)
+		}
+	case "gcp":
+		var c *cloud.GCPClient
+		c, err = a.gcpClient(ctx, current(r).WorkspaceID, accountID)
+		if err == nil {
+			details, err = cloud.GCPDetails(ctx, c, iid)
+		}
+	default:
+		err = errors.New("unsupported cloud provider")
 	}
 	if err != nil {
 		a.audit(r, "instance.details_failed", iid, nil)
@@ -146,18 +176,33 @@ func (a *App) action(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
-	if provider == "aws" {
+	switch provider {
+	case "aws":
 		var c *ec2.Client
 		c, err = a.awsClient(ctx, u.WorkspaceID, accountID, region)
 		if err == nil {
 			err = cloud.Action(ctx, c, iid, in.Action)
 		}
-	} else {
+	case "alibaba":
 		var c *ecs.Client
 		c, err = a.alibabaClient(ctx, u.WorkspaceID, accountID, region)
 		if err == nil {
 			err = cloud.AlibabaAction(ctx, c, iid, in.Action)
 		}
+	case "azure":
+		var c *cloud.AzureClient
+		c, err = a.azureClient(ctx, u.WorkspaceID, accountID)
+		if err == nil {
+			err = cloud.AzureAction(ctx, c, iid, in.Action)
+		}
+	case "gcp":
+		var c *cloud.GCPClient
+		c, err = a.gcpClient(ctx, u.WorkspaceID, accountID)
+		if err == nil {
+			err = cloud.GCPAction(ctx, c, iid, in.Action)
+		}
+	default:
+		err = errors.New("unsupported cloud provider")
 	}
 	if err != nil {
 		a.audit(r, "instance."+in.Action+".failed", iid, nil)

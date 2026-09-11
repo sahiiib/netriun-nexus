@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: sahiiib/netriun-nexus
-  tag: "0.1.8"
+  tag: "0.1.9"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

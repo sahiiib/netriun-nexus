@@ -12,3 +12,15 @@
   width: 100%;
   margin-top: -13px;
 }
+
+.account-card .azure {
+  color: #6db7ff;
+  border-bottom: 2px solid #1686e8;
+  font-weight: 750;
+}
+
+.account-card .gcp {
+  color: #72d499;
+  border-bottom: 2px solid #4285f4;
+  font-weight: 750;
+}

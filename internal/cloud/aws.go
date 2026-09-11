@@ -27,8 +27,8 @@ func Regions(ctx context.Context, c *ec2.Client) ([]string, error) {
 }
 
 type Instance struct {
-	ID, Name, State, Type, PublicIP, PrivateIP string
-	Details                                    map[string]any
+	ID, Name, State, Type, PublicIP, PrivateIP, Region string
+	Details                                            map[string]any
 }
 
 func Inventory(ctx context.Context, c *ec2.Client) ([]Instance, error) {
@@ -61,7 +61,7 @@ func Inventory(ctx context.Context, c *ec2.Client) ([]Instance, error) {
 				if i.State != nil {
 					state = string(i.State.Name)
 				}
-				result = append(result, Instance{aws.ToString(i.InstanceId), tags["Name"], state, string(i.InstanceType), aws.ToString(i.PublicIpAddress), aws.ToString(i.PrivateIpAddress), map[string]any{"tags": tags, "security_group_ids": groups, "launch_time": launch, "vpc_id": aws.ToString(i.VpcId), "subnet_id": aws.ToString(i.SubnetId), "iam_instance_profile": profile}})
+				result = append(result, Instance{ID: aws.ToString(i.InstanceId), Name: tags["Name"], State: state, Type: string(i.InstanceType), PublicIP: aws.ToString(i.PublicIpAddress), PrivateIP: aws.ToString(i.PrivateIpAddress), Details: map[string]any{"tags": tags, "security_group_ids": groups, "launch_time": launch, "vpc_id": aws.ToString(i.VpcId), "subnet_id": aws.ToString(i.SubnetId), "iam_instance_profile": profile}})
 			}
 		}
 	}
