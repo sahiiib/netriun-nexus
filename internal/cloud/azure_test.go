@@ -33,6 +33,9 @@ func TestAzureInventoryDetailsAndActions(t *testing.T) {
 	}))
 	defer server.Close()
 	client := &AzureClient{subscriptionID: "sub", accessToken: "test-token", baseURL: server.URL, httpClient: server.Client()}
+	if err := AzureConnection(context.Background(), client); err != nil {
+		t.Fatal(err)
+	}
 	items, err := AzureInventory(context.Background(), client)
 	if err != nil || len(items) != 1 || items[0].Region != "eastus" || items[0].State != "running" {
 		t.Fatalf("inventory=%#v err=%v", items, err)

@@ -147,6 +147,14 @@ func AzureInventory(ctx context.Context, c *AzureClient) ([]Instance, error) {
 	return result, nil
 }
 
+func AzureConnection(ctx context.Context, c *AzureClient) error {
+	var page struct {
+		Value []json.RawMessage `json:"value"`
+	}
+	target := fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Compute/virtualMachines?api-version=%s", url.PathEscape(c.subscriptionID), azureComputeAPIVersion)
+	return c.request(ctx, http.MethodGet, target, &page)
+}
+
 func azurePowerState(statuses []struct {
 	Code          string `json:"code"`
 	DisplayStatus string `json:"displayStatus"`

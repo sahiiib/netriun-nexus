@@ -218,6 +218,7 @@ func (a *App) Handler() http.Handler {
 		"POST /api/v1/auth/logout": a.logout,
 		"GET /api/v1/instances":    a.instances, "GET /api/v1/instances/{id}": a.instance, "POST /api/v1/instances/{id}/actions": a.action,
 		"GET /api/v1/accounts": a.accounts, "POST /api/v1/accounts": a.saveAccount, "PUT /api/v1/accounts/{id}": a.saveAccount, "DELETE /api/v1/accounts/{id}": a.deleteAccount,
+		"POST /api/v1/accounts/test": a.testCloudAccount, "POST /api/v1/accounts/{id}/test": a.testCloudAccount,
 		"GET /api/v1/accounts/{id}/eds/desktops": a.edsDesktops, "POST /api/v1/accounts/{id}/eds/desktops": a.createEDSDesktop,
 		"GET /api/v1/accounts/{id}/eds/catalog":                                  a.edsCatalog,
 		"GET /api/v1/accounts/{id}/eds/regions":                                  a.edsRegions,

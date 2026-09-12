@@ -126,17 +126,35 @@ func TestIntegration(t *testing.T) {
 		return v.ID
 	}
 	request("GET", "/api/v1/instances", "", nil, 401)
+	request("POST", "/api/v1/accounts/test", "", map[string]string{"provider": "aws"}, 401)
 	request("POST", "/api/v1/auth/login", "", map[string]string{"email": "testadmin@example.com", "password": "wrong"}, 401)
 	adminToken := login("testadmin@example.com", "Test-admin-password1!")
+	proveConnection := func(email, provider string, credentials Credentials) {
+		t.Helper()
+		var u User
+		if err = a.DB.QueryRow(ctx, "SELECT id,workspace_id FROM users WHERE email=$1", email).Scan(&u.ID, &u.WorkspaceID); err != nil {
+			t.Fatal(err)
+		}
+		if message := validateCredentials(provider, &credentials); message != "" {
+			t.Fatal(message)
+		}
+		if err = a.Redis.Set(ctx, connectionProofKey(u, provider, 0, credentials), "1", time.Minute).Err(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	request("POST", "/api/v1/accounts/test", adminToken, map[string]any{"provider": "azure", "credentials": map[string]string{"tenant_id": "invalid"}}, 400)
+	request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Untested", "provider": "aws", "credentials": map[string]string{"access_key_id": "untested-key", "secret_access_key": "untested-secret"}}, http.StatusConflict)
 	group1 := idFrom(request("POST", "/api/v1/groups", adminToken, map[string]any{"name": "Team A", "view_dashboard": true, "manage_cloud_accounts": true, "manage_group_members": true}, 200))
 	group2 := idFrom(request("POST", "/api/v1/groups", adminToken, map[string]any{"name": "Team B", "view_dashboard": true}, 200))
 	uid := idFrom(request("POST", "/api/v1/users", adminToken, map[string]string{"username": "viewer", "email": "viewer@example.com", "password": "Viewer-password1!", "role": "user"}, 200))
 	verifyLatest()
 	request("PUT", fmt.Sprintf("/api/v1/groups/%d/members/%d", group1, uid), adminToken, map[string]string{"role": "viewer"}, 200)
 	acct := func(name string, gid int64) int64 {
+		proveConnection("testadmin@example.com", "aws", Credentials{AccessKey: "test-key", SecretKey: "secret-must-not-leak"})
 		return idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": name, "owner": "Platform", "group_id": gid, "regions": []string{"us-east-1"}, "credentials": map[string]string{"access_key_id": "test-key", "secret_access_key": "secret-must-not-leak"}}, 200))
 	}
 	account1, account2 := acct("Account A", group1), acct("Account B", group2)
+	proveConnection("testadmin@example.com", "alibaba", Credentials{AccessKey: "LTAI-test", SecretKey: "alibaba-secret"})
 	alibabaAccount := idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Alibaba Production", "provider": "alibaba", "owner": "Platform", "group_id": group2, "regions": []string{"cn-hangzhou", "ap-southeast-1"}, "credentials": map[string]string{"access_key_id": "LTAI-test", "secret_access_key": "alibaba-secret"}}, 200))
 	var alibabaProvider, alibabaCipher string
 	if err = a.DB.QueryRow(ctx, "SELECT provider,credentials FROM cloud_accounts WHERE id=$1", alibabaAccount).Scan(&alibabaProvider, &alibabaCipher); err != nil || alibabaProvider != "alibaba" || strings.Contains(alibabaCipher, "alibaba-secret") {
@@ -144,8 +162,11 @@ func TestIntegration(t *testing.T) {
 	}
 	request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Invalid Alibaba", "provider": "alibaba", "regions": []string{"not a region"}, "credentials": map[string]string{"access_key_id": "key", "secret_access_key": "secret"}}, 400)
 	cloudUUID := "11111111-1111-4111-8111-111111111111"
+	proveConnection("testadmin@example.com", "azure", Credentials{TenantID: cloudUUID, ClientID: cloudUUID, ClientSecret: "azure-secret", SubscriptionID: cloudUUID})
 	azureAccount := idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "Azure Production", "provider": "azure", "owner": "Platform", "group_id": group2, "regions": []string{"eastus"}, "credentials": map[string]string{"tenant_id": cloudUUID, "client_id": cloudUUID, "client_secret": "azure-secret", "subscription_id": cloudUUID}}, 200))
-	gcpAccount := idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "GCP Production", "provider": "gcp", "owner": "Platform", "group_id": group2, "regions": []string{"europe-west1"}, "credentials": map[string]string{"project_id": "example-project", "service_account_json": validGCPServiceAccountJSON(t)}}, 200))
+	gcpKey := validGCPServiceAccountJSON(t)
+	proveConnection("testadmin@example.com", "gcp", Credentials{ProjectID: "example-project", ServiceAccountJSON: gcpKey})
+	gcpAccount := idFrom(request("POST", "/api/v1/accounts", adminToken, map[string]any{"name": "GCP Production", "provider": "gcp", "owner": "Platform", "group_id": group2, "regions": []string{"europe-west1"}, "credentials": map[string]string{"project_id": "example-project", "service_account_json": gcpKey}}, 200))
 	for _, providerAccount := range []struct {
 		id       int64
 		provider string
@@ -162,6 +183,7 @@ func TestIntegration(t *testing.T) {
 	verifyLatest()
 	secondOwner := login("second-owner@example.com", "Second-owner-password1!")
 	secondGroup := idFrom(request("POST", "/api/v1/groups", secondOwner, map[string]any{"name": "Team A", "view_dashboard": true}, 200))
+	proveConnection("second-owner@example.com", "aws", Credentials{AccessKey: "tenant-two", SecretKey: "isolated-secret"})
 	secondAccount := idFrom(request("POST", "/api/v1/accounts", secondOwner, map[string]any{"name": "Account A", "provider": "aws", "group_id": secondGroup, "regions": []string{"us-east-1"}, "credentials": map[string]string{"access_key_id": "tenant-two", "secret_access_key": "isolated-secret"}}, 200))
 	var i1, i2 int64
 	for _, p := range []struct {

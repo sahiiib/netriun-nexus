@@ -146,6 +146,14 @@ func GCPInventory(ctx context.Context, c *GCPClient) ([]Instance, error) {
 	return result, nil
 }
 
+func GCPConnection(ctx context.Context, c *GCPClient) error {
+	var page struct {
+		Items map[string]json.RawMessage `json:"items"`
+	}
+	target := fmt.Sprintf("/projects/%s/aggregated/instances?returnPartialSuccess=true&maxResults=1", url.PathEscape(c.projectID))
+	return c.request(ctx, http.MethodGet, target, &page)
+}
+
 func gcpState(status string) string {
 	switch strings.ToUpper(status) {
 	case "RUNNING":

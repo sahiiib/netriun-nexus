@@ -38,7 +38,7 @@ var (
 
 func (a *App) accounts(w http.ResponseWriter, r *http.Request) {
 	u := current(r)
-	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT a.id,a.name,a.provider,a.owner,a.group_id,g.name AS group_name,a.regions,ARRAY(SELECT DISTINCT i.region FROM instances i WHERE i.account_id=a.id ORDER BY i.region) AS discovered_regions,a.last_sync_at,a.sync_error,a.created_at,(SELECT count(*) FROM instances i WHERE i.account_id=a.id) AS instance_count FROM cloud_accounts a LEFT JOIN access_groups g ON g.id=a.group_id WHERE `+scopeSQL+` OR (a.workspace_id=$3 AND EXISTS(SELECT 1 FROM user_groups ug JOIN access_groups mg ON mg.id=ug.group_id WHERE ug.user_id=$2 AND ug.group_id=a.group_id AND ug.role='manager' AND mg.manage_cloud_accounts)) ORDER BY a.name) t`, u.Role == "admin", u.ID, u.WorkspaceID)
+	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT a.id,a.name,a.provider,a.owner,a.group_id,g.name AS group_name,a.regions,ARRAY(SELECT DISTINCT i.region FROM instances i WHERE i.account_id=a.id ORDER BY i.region) AS discovered_regions,a.last_sync_at,a.sync_error,a.sync_error_code,a.created_at,(SELECT count(*) FROM instances i WHERE i.account_id=a.id) AS instance_count FROM cloud_accounts a LEFT JOIN access_groups g ON g.id=a.group_id WHERE `+scopeSQL+` OR (a.workspace_id=$3 AND EXISTS(SELECT 1 FROM user_groups ug JOIN access_groups mg ON mg.id=ug.group_id WHERE ug.user_id=$2 AND ug.group_id=a.group_id AND ug.role='manager' AND mg.manage_cloud_accounts)) ORDER BY a.name) t`, u.Role == "admin", u.ID, u.WorkspaceID)
 }
 func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 	var in accountInput
@@ -65,6 +65,7 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 	var ok bool
 	var cipher string
 	var existingProvider string
+	var verifiedCredentials Credentials
 	if r.Method == "PUT" {
 		id, ok = pathID(w, r, "id")
 		if !ok {
@@ -96,6 +97,7 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		b, _ := json.Marshal(in.Credentials)
 		cipher = a.Vault.Encrypt(string(b))
+		verifiedCredentials = *in.Credentials
 	}
 	if existingProvider != "" && existingProvider != in.Provider && in.Credentials == nil {
 		problem(w, 400, "New credentials are required when changing provider")
@@ -103,6 +105,11 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	if cipher == "" {
 		problem(w, 400, "Cloud credentials are required")
+		return
+	}
+	credentialsChanged := id == 0 || in.Credentials != nil || existingProvider != in.Provider
+	if credentialsChanged && !a.requireConnectionProof(r.Context(), current(r), in.Provider, id, verifiedCredentials) {
+		codedProblem(w, 409, "NX-CONNECTION-TEST-REQUIRED", "Test this cloud connection successfully before saving", []string{"Run Test connection with the current provider and credentials", "Save within ten minutes of a successful test"})
 		return
 	}
 	if in.Regions == nil {
@@ -118,8 +125,7 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer tx.Rollback(r.Context())
-		credentialsChanged := in.Credentials != nil || existingProvider != in.Provider
-		_, err = tx.Exec(r.Context(), "UPDATE cloud_accounts SET name=$1,provider=$2,owner=$3,group_id=$4,credentials=$5,regions=$6,last_sync_at=CASE WHEN $9 THEN NULL ELSE last_sync_at END,sync_error=CASE WHEN $9 THEN '' ELSE sync_error END WHERE id=$7 AND workspace_id=$8", in.Name, in.Provider, in.Owner, in.GroupID, cipher, in.Regions, id, current(r).WorkspaceID, credentialsChanged)
+		_, err = tx.Exec(r.Context(), "UPDATE cloud_accounts SET name=$1,provider=$2,owner=$3,group_id=$4,credentials=$5,regions=$6,last_sync_at=CASE WHEN $9 THEN NULL ELSE last_sync_at END,sync_error=CASE WHEN $9 THEN '' ELSE sync_error END,sync_error_code=CASE WHEN $9 THEN '' ELSE sync_error_code END WHERE id=$7 AND workspace_id=$8", in.Name, in.Provider, in.Owner, in.GroupID, cipher, in.Regions, id, current(r).WorkspaceID, credentialsChanged)
 		if err == nil && existingProvider != in.Provider {
 			_, err = tx.Exec(r.Context(), "DELETE FROM instances WHERE account_id=$1", id)
 		}
@@ -173,6 +179,7 @@ func validateCredentials(provider string, c *Credentials) string {
 	}
 	return ""
 }
+
 func (a *App) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "id")
 	if !ok {

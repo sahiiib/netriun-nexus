@@ -57,6 +57,13 @@ func AlibabaRegions(ctx context.Context, c *ecs.Client) ([]string, error) {
 	return regions, nil
 }
 
+// AlibabaConnection performs a bounded ECS inventory read in the selected
+// region so a successful test covers more than AccessKey authentication.
+func AlibabaConnection(ctx context.Context, c *ecs.Client, region string) error {
+	_, err := c.DescribeInstances(new(ecs.DescribeInstancesRequest).SetRegionId(region).SetMaxResults(1))
+	return err
+}
+
 func AlibabaInventory(ctx context.Context, c *ecs.Client, region string) ([]Instance, error) {
 	result := []Instance{}
 	next := ""

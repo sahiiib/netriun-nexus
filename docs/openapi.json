@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Netriun Nexus API",
-    "version": "1.3.0",
-    "description": "Multi-tenant workspace API with verified-email authentication. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. Account creation requires credentials; PUT account requests may omit credentials to preserve them."
+    "version": "1.4.0",
+    "description": "Multi-tenant workspace API with verified-email authentication. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. Account creation and credential replacement require a successful connection test by the same user during the previous ten minutes; PUT account requests may omit credentials to preserve them."
   },
   "servers": [
     {
@@ -314,6 +314,57 @@
               }
             }
           }
+        }
+      }
+    },
+    "/accounts/test": {
+      "post": {
+        "summary": "Validate new cloud credentials and required compute read access",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ConnectionTest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Credentials and required read access are working" },
+          "400": { "description": "Invalid provider or credentials" },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Cloud account management access required" },
+          "429": { "description": "Connection-test rate limit exceeded" },
+          "502": { "description": "Provider rejected the connection; response includes a stable NX error code and remediation steps" }
+        }
+      }
+    },
+    "/accounts/{id}/test": {
+      "post": {
+        "summary": "Validate a saved cloud connection or replacement credentials",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "minimum": 1 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ConnectionTest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Stored or replacement credentials and required read access are working" },
+          "400": { "description": "Invalid provider or replacement credentials" },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Account management access required" },
+          "404": { "description": "Account not found" },
+          "429": { "description": "Connection-test rate limit exceeded" },
+          "502": { "description": "Provider rejected the connection; response includes a stable NX error code and remediation steps" }
         }
       }
     },
@@ -1648,6 +1699,20 @@
         "required": [
           "name"
         ]
+      },
+      "ConnectionTest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": ["aws", "alibaba", "azure", "gcp"]
+          },
+          "credentials": {
+            "$ref": "#/components/schemas/Account/properties/credentials"
+          }
+        },
+        "required": ["provider"]
       },
       "Membership": {
         "type": "object",

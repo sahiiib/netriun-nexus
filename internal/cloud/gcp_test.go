@@ -33,6 +33,9 @@ func TestGCPInventoryDetailsAndActions(t *testing.T) {
 	}))
 	defer server.Close()
 	client := &GCPClient{projectID: "project-one", baseURL: server.URL, tokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token"}), httpClient: server.Client()}
+	if err := GCPConnection(context.Background(), client); err != nil {
+		t.Fatal(err)
+	}
 	items, err := GCPInventory(context.Background(), client)
 	if err != nil || len(items) != 1 || items[0].Region != "europe-west1" || items[0].State != "running" {
 		t.Fatalf("inventory=%#v err=%v", items, err)

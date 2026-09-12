@@ -134,10 +134,10 @@ func (a *App) Collect(parent context.Context, workspaceID int64) error {
 			if accountErr != nil {
 				failures++
 				slog.Warn("cloud collection failed", "provider", ac.provider, "account_id", ac.id, "error", accountErr)
-				a.DB.Exec(ctx, "UPDATE cloud_accounts SET sync_error=$1 WHERE id=$2", "Collection failed. Check credentials, permissions and selected regions.", ac.id)
+				a.DB.Exec(ctx, "UPDATE cloud_accounts SET sync_error=$1,sync_error_code=$2 WHERE id=$3", "Collection failed. Check credentials, permissions and selected regions.", providerErrorCode(ac.provider), ac.id)
 				a.record(ctx, workspaceID, 0, "system", "collector.account_failed", fmt.Sprint(ac.id), nil)
 			} else {
-				a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=now(),sync_error='' WHERE id=$1", ac.id)
+				a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=now(),sync_error='',sync_error_code='' WHERE id=$1", ac.id)
 			}
 			continue
 		}
@@ -170,10 +170,10 @@ func (a *App) Collect(parent context.Context, workspaceID int64) error {
 		if accountErr != nil {
 			failures++
 			slog.Warn("cloud collection failed", "provider", ac.provider, "account_id", ac.id, "error", accountErr)
-			a.DB.Exec(ctx, "UPDATE cloud_accounts SET sync_error=$1 WHERE id=$2", "Collection failed. Check credentials, permissions and selected regions.", ac.id)
+			a.DB.Exec(ctx, "UPDATE cloud_accounts SET sync_error=$1,sync_error_code=$2 WHERE id=$3", "Collection failed. Check credentials, permissions and selected regions.", providerErrorCode(ac.provider), ac.id)
 			a.record(ctx, workspaceID, 0, "system", "collector.account_failed", fmt.Sprint(ac.id), nil)
 		} else {
-			a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=now(),sync_error='' WHERE id=$1", ac.id)
+			a.DB.Exec(ctx, "UPDATE cloud_accounts SET last_sync_at=now(),sync_error='',sync_error_code='' WHERE id=$1", ac.id)
 		}
 	}
 	if ctx.Err() != nil {

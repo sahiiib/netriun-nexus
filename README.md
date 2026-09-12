@@ -33,7 +33,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - Searchable, paginated compute inventory across AWS, Alibaba Cloud, Azure and Google Cloud.
 - An active-account context that exposes only the services belonging to the selected cloud provider.
 - Live Alibaba WUYING EDS desktops and convenience users, including create, renew, user assignment, start, stop, and reboot workflows.
-- AWS and Alibaba Cloud account creation, editing, credential replacement and disconnection.
+- Guided AWS, Alibaba Cloud, Azure and Google Cloud connection setup with a required live credential and compute-access test before saving.
 - Scheduled collection across explicitly selected or all enabled regions.
 - Paginated provider collection and transactional reconciliation per successful region; failed regions retain their previous inventory.
 - Start, stop and reboot; live security group, volume and network interface details.
@@ -41,6 +41,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - Redis sessions, logout/revocation, login rate limiting and renewable collector leases.
 - AES-256-GCM encryption for cloud credentials, bcrypt passwords and same-origin mutation checks.
 - Audit history, retention settings, structured application logs and container log rotation.
+- Searchable in-app Documentation Center and contextual Help, backed by one structured content source and the stable [documentation map](docs/index.md).
 - REST API at `/api/v1`, in-app API reference and [OpenAPI specification](docs/openapi.json).
 - Offline [legacy migration](docs/migration.md), with a dry-run default.
 - Netriun visual design with persistent dark, light and system appearance modes.
@@ -84,6 +85,10 @@ Use a dedicated RAM user AccessKey, not a root-account AccessKey. ECS inventory 
 ## Azure and Google Cloud access
 
 Azure uses a Microsoft Entra service principal scoped to a subscription. Google Cloud uses a dedicated service-account JSON key scoped to a project. Nexus discovers Azure Virtual Machines and Google Compute Engine instances, provides live details, and supports start, stop and reboot/reset when the identity has the required role. Follow the [Azure and Google Cloud connection guide](docs/azure-gcp.md) and prefer read-only roles when lifecycle actions are not needed.
+
+## Product documentation
+
+The portal includes a searchable Documentation page and a contextual **Help** button that opens the article relevant to the current page. Both read from `internal/app/web/docs.js`, so guidance stays consistent. The long-term structure is fixed as **Getting Started → Cloud Connections → Services → Access Management → Operations → Troubleshooting**; use the [documentation map](docs/index.md) when expanding it in later phases.
 
 ## Go development
 

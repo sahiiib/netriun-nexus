@@ -26,6 +26,14 @@ func Regions(ctx context.Context, c *ec2.Client) ([]string, error) {
 	return regions, nil
 }
 
+// AWSConnection performs the smallest inventory read used by Nexus so a
+// successful test proves both authentication and EC2 instance visibility.
+func AWSConnection(ctx context.Context, c *ec2.Client) error {
+	maxResults := int32(5)
+	_, err := c.DescribeInstances(ctx, &ec2.DescribeInstancesInput{MaxResults: &maxResults})
+	return err
+}
+
 type Instance struct {
 	ID, Name, State, Type, PublicIP, PrivateIP, Region string
 	Details                                            map[string]any
