@@ -32,9 +32,11 @@ This account-by-account fallback must remain until the Access Policy UI can migr
 
 ## SSO integration
 
-OIDC and SAML group mappings will create source-aware team membership grants. SSO grants must not overwrite manual grants. Removing an IdP group membership removes only the matching SSO grant.
+OIDC and SAML group mappings create source-aware team membership grants. SSO grants do not overwrite manual grants. Removing an IdP group membership or mapping removes only the matching SSO grant.
 
 External identities are linked by provider identity (`issuer + subject` for OIDC and IdP + persistent NameID for SAML), never by an unverified email alone. The workspace owner retains a local break-glass login even when SSO enforcement is enabled.
+
+OIDC uses Authorization Code flow with discovery, state, nonce, PKCE S256, signature, issuer, and audience validation. SAML uses generated per-provider SP credentials, signed assertion validation, request correlation, and a persistent NameID. Claim and attribute group values reconcile into separate `sso_membership_grants`; `effective_user_groups` combines those grants with manual memberships for policy evaluation.
 
 ## Policy evaluation
 

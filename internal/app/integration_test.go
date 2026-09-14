@@ -286,6 +286,64 @@ func TestIntegration(t *testing.T) {
 	// A group manager may not move credentials to a group they do not manage.
 	request("PUT", fmt.Sprintf("/api/v1/accounts/%d", account1), viewer, map[string]any{"name": "Moved", "group_id": group2, "regions": []string{}}, 403)
 	request("PUT", fmt.Sprintf("/api/v1/accounts/%d", account1), viewer, map[string]any{"name": "Renamed A", "group_id": group1, "regions": []string{}}, 200)
+	request("GET", "/api/v1/identity-providers", viewer, nil, 403)
+	idpID := idFrom(request("POST", "/api/v1/identity-providers", adminToken, map[string]any{"name": "Test OIDC", "protocol": "oidc", "enabled": false, "jit_provisioning": false, "config": map[string]any{"issuer_url": "https://identity.example.com", "client_id": "nexus-test", "client_secret": "identity-secret", "scopes": []string{"openid", "profile", "email", "groups"}}}, 200))
+	idpList := request("GET", "/api/v1/identity-providers", adminToken, nil, 200)
+	if strings.Contains(idpList.Body.String(), "identity-secret") || !strings.Contains(idpList.Body.String(), `"client_secret_configured":true`) {
+		t.Fatal("identity-provider secret was exposed or not retained")
+	}
+	var publicID, encryptedIDPConfig string
+	if err = a.DB.QueryRow(ctx, "SELECT public_id,config_encrypted FROM identity_providers WHERE id=$1", idpID).Scan(&publicID, &encryptedIDPConfig); err != nil || strings.Contains(encryptedIDPConfig, "identity-secret") {
+		t.Fatal("identity-provider configuration was not encrypted")
+	}
+	if _, err = a.DB.Exec(ctx, "UPDATE identity_providers SET enabled=true WHERE id=$1", idpID); err != nil {
+		t.Fatal(err)
+	}
+	request("GET", "/api/v1/auth/sso/providers?workspace=default", "", nil, 200)
+	mappingID := idFrom(request("PUT", fmt.Sprintf("/api/v1/identity-providers/%d/group-mappings", idpID), adminToken, map[string]any{"external_group": "cloud-operators", "group_id": group2, "membership_role": "operator"}, 200))
+	p, _, err := a.loadIdentityProvider(ctx, publicID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ssoResponse := httptest.NewRecorder()
+	a.finishSSO(ssoResponse, httptest.NewRequest("GET", "/sso/callback", nil), p, ssoIdentity{Subject: "stable-subject-1", Email: "viewer@example.com", EmailVerified: true, Username: "viewer", Groups: []string{"cloud-operators"}, Attributes: map[string]any{"sub": "stable-subject-1"}})
+	if ssoResponse.Code != http.StatusSeeOther {
+		t.Fatalf("SSO identity linking failed: %d %s", ssoResponse.Code, ssoResponse.Body.String())
+	}
+	var ssoGrantCount, manualGrantCount int
+	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM sso_membership_grants WHERE provider_id=$1 AND user_id=$2 AND group_id=$3", idpID, uid, group2).Scan(&ssoGrantCount); err != nil || ssoGrantCount != 1 {
+		t.Fatal("SSO group claim was not mapped to the Nexus team")
+	}
+	request("DELETE", fmt.Sprintf("/api/v1/identity-providers/%d/group-mappings/%d", idpID, mappingID), adminToken, nil, 200)
+	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM sso_membership_grants WHERE provider_id=$1 AND user_id=$2", idpID, uid).Scan(&ssoGrantCount); err != nil || ssoGrantCount != 0 {
+		t.Fatal("removing an IdP group mapping left stale SSO membership grants")
+	}
+	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM user_groups WHERE user_id=$1 AND group_id=$2", uid, group1).Scan(&manualGrantCount); err != nil || manualGrantCount != 1 {
+		t.Fatal("SSO reconciliation removed a manual team membership")
+	}
+	if _, err = a.DB.Exec(ctx, "UPDATE identity_providers SET jit_provisioning=true WHERE id=$1", idpID); err != nil {
+		t.Fatal(err)
+	}
+	p.JITProvisioning = true
+	jitResponse := httptest.NewRecorder()
+	a.finishSSO(jitResponse, httptest.NewRequest("GET", "/sso/callback", nil), p, ssoIdentity{Subject: "stable-subject-jit", Email: "jit-user@example.com", EmailVerified: true, Username: "JIT Person", Attributes: map[string]any{"sub": "stable-subject-jit"}})
+	if jitResponse.Code != http.StatusSeeOther {
+		t.Fatalf("SSO JIT provisioning failed: %d %s", jitResponse.Code, jitResponse.Body.String())
+	}
+	var jitUserID int64
+	var jitVerified bool
+	if err = a.DB.QueryRow(ctx, "SELECT id,email_verified_at IS NOT NULL FROM users WHERE workspace_id=$1 AND email='jit-user@example.com'", workspaceID).Scan(&jitUserID, &jitVerified); err != nil || !jitVerified {
+		t.Fatal("JIT user was not created as a verified workspace user")
+	}
+	if _, err = a.DB.Exec(ctx, "DELETE FROM users WHERE id=$1", jitUserID); err != nil {
+		t.Fatal(err)
+	}
+	request("PUT", "/api/v1/sso-settings", adminToken, map[string]bool{"sso_required": true}, 200)
+	request("POST", "/api/v1/auth/login", "", map[string]string{"email": "viewer@example.com", "password": "Viewer-password1!"}, 403)
+	login("testadmin@example.com", "Test-admin-password1!") // owner break-glass remains available
+	request("DELETE", fmt.Sprintf("/api/v1/identity-providers/%d", idpID), adminToken, nil, 409)
+	request("PUT", "/api/v1/sso-settings", adminToken, map[string]bool{"sso_required": false}, 200)
+	request("DELETE", fmt.Sprintf("/api/v1/identity-providers/%d", idpID), adminToken, nil, 200)
 	var cipher string
 	if err = a.DB.QueryRow(ctx, "SELECT credentials FROM cloud_accounts WHERE id=$1", account1).Scan(&cipher); err != nil {
 		t.Fatal(err)
@@ -304,6 +362,14 @@ func TestIntegration(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != 403 {
 		t.Fatal("cross-origin mutation allowed")
+	}
+	r = httptest.NewRequest("POST", "/sso/unknown/acs", strings.NewReader("RelayState=invalid&SAMLResponse=invalid"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", "https://identity.example.com")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("cross-origin SAML ACS was blocked before signed response validation: %d", w.Code)
 	}
 	request("PUT", fmt.Sprintf("/api/v1/users/%d", uid), adminToken, map[string]string{"username": "viewer", "email": "viewer@example.com", "password": "Changed-password1!", "role": "user"}, 200)
 	request("GET", "/api/v1/auth/me", viewer, nil, 401)
@@ -354,7 +420,7 @@ func TestIntegration(t *testing.T) {
 	request("GET", "/readyz", "", nil, 200)
 	request("GET", "/", "", nil, 200)
 	webAsset := request("GET", "/app.js", "", nil, 200)
-	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") {
+	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") {
 		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
 	}
 	// Rate limiting is atomic and independent of email.

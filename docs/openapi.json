@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Netriun Nexus API",
-    "version": "1.5.0",
-    "description": "Multi-tenant workspace API with verified-email authentication. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. Account creation and credential replacement require a successful connection test by the same user during the previous ten minutes; PUT account requests may omit credentials to preserve them."
+    "version": "1.6.0",
+    "description": "Multi-tenant workspace API with local verified-email authentication plus workspace-scoped OIDC and SAML SSO. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. The workspace owner retains local break-glass access when SSO is required."
   },
   "servers": [
     {
@@ -118,6 +118,18 @@
         "responses": {
           "202": { "description": "Generic response returned whether or not the account exists" },
           "429": { "description": "Rate limit exceeded" }
+        },
+        "security": []
+      }
+    },
+    "/auth/sso/providers": {
+      "get": {
+        "summary": "Discover enabled identity providers using a workspace SSO code",
+        "parameters": [{ "name": "workspace", "in": "query", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Enabled provider names, protocols, and sign-in URLs" },
+          "400": { "description": "Workspace code is required" },
+          "429": { "description": "Discovery rate limit exceeded" }
         },
         "security": []
       }
@@ -1302,6 +1314,57 @@
         }
       }
     },
+    "/identity-providers": {
+      "get": {
+        "summary": "List safe identity-provider configuration (admin)",
+        "responses": { "200": { "description": "Providers, workspace SSO code, and enforcement state" }, "403": { "description": "Workspace administrator required" } }
+      },
+      "post": {
+        "summary": "Create an OIDC or SAML identity provider (admin)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdentityProvider" } } } },
+        "responses": { "200": { "description": "Provider created" }, "400": { "description": "Invalid provider configuration" }, "403": { "description": "Workspace administrator required" }, "409": { "description": "Provider name conflict" } }
+      }
+    },
+    "/identity-providers/{id}": {
+      "put": {
+        "summary": "Update an identity provider without returning stored secrets (admin)",
+        "parameters": [{ "$ref": "#/components/parameters/ID" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdentityProvider" } } } },
+        "responses": { "200": { "description": "Provider updated" }, "400": { "description": "Invalid configuration" }, "409": { "description": "Cannot disable the final provider while SSO is required" } }
+      },
+      "delete": {
+        "summary": "Delete an identity provider and its SSO-derived grants (admin)",
+        "parameters": [{ "$ref": "#/components/parameters/ID" }],
+        "responses": { "200": { "description": "Provider deleted" }, "404": { "description": "Provider not found" }, "409": { "description": "Cannot delete the final provider while SSO is required" } }
+      }
+    },
+    "/identity-providers/{id}/group-mappings": {
+      "get": {
+        "summary": "List IdP group to Nexus team mappings (admin)",
+        "parameters": [{ "$ref": "#/components/parameters/ID" }],
+        "responses": { "200": { "description": "Group mappings" } }
+      },
+      "put": {
+        "summary": "Create or update an IdP group mapping (admin)",
+        "parameters": [{ "$ref": "#/components/parameters/ID" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdentityGroupMapping" } } } },
+        "responses": { "200": { "description": "Mapping saved" }, "400": { "description": "Invalid group, team, or role" } }
+      }
+    },
+    "/identity-providers/{id}/group-mappings/{mappingID}": {
+      "delete": {
+        "summary": "Delete a group mapping and its matching SSO-derived grants (admin)",
+        "parameters": [{ "$ref": "#/components/parameters/ID" }, { "name": "mappingID", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }],
+        "responses": { "200": { "description": "Mapping and derived grants deleted" }, "404": { "description": "Mapping not found" } }
+      }
+    },
+    "/sso-settings": {
+      "put": {
+        "summary": "Require or relax SSO for non-owner users (admin)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "properties": { "sso_required": { "type": "boolean" } }, "required": ["sso_required"] } } } },
+        "responses": { "200": { "description": "Enforcement updated" }, "400": { "description": "An enabled provider is required before enforcement" } }
+      }
+    },
     "/groups/{id}/members/{userID}": {
       "put": {
         "summary": "Assign or update membership",
@@ -1538,6 +1601,14 @@
     }
   },
   "components": {
+    "parameters": {
+      "ID": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer", "minimum": 1 }
+      }
+    },
     "securitySchemes": {
       "bearerAuth": {
         "type": "http",
@@ -1598,6 +1669,31 @@
           "email",
           "password"
         ]
+      },
+      "IdentityProvider": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "protocol": { "type": "string", "enum": ["oidc", "saml"] },
+          "enabled": { "type": "boolean" },
+          "jit_provisioning": { "type": "boolean" },
+          "config": {
+            "type": "object",
+            "description": "OIDC issuer/client/claim settings or SAML IdP metadata/attribute settings. Stored secrets are never returned."
+          }
+        },
+        "required": ["name", "protocol", "enabled", "jit_provisioning", "config"]
+      },
+      "IdentityGroupMapping": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "external_group": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "group_id": { "type": "integer", "minimum": 1 },
+          "membership_role": { "type": "string", "enum": ["viewer", "operator", "manager"] }
+        },
+        "required": ["external_group", "group_id", "membership_role"]
       },
       "User": {
         "type": "object",

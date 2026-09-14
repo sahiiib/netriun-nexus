@@ -63,7 +63,7 @@ func (a *App) canTestNewAccount(ctx context.Context, u User) bool {
 		return true
 	}
 	var allowed bool
-	err := a.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM user_groups ug JOIN access_groups g ON g.id=ug.group_id WHERE ug.user_id=$1 AND ug.role='manager' AND g.workspace_id=$2 AND g.manage_cloud_accounts)`, u.ID, u.WorkspaceID).Scan(&allowed)
+	err := a.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM effective_user_groups ug JOIN access_groups g ON g.id=ug.group_id WHERE ug.user_id=$1 AND ug.role='manager' AND g.workspace_id=$2 AND g.manage_cloud_accounts)`, u.ID, u.WorkspaceID).Scan(&allowed)
 	return err == nil && allowed
 }
 

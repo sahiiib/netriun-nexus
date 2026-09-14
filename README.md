@@ -38,6 +38,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - Paginated provider collection and transactional reconciliation per successful region; failed regions retain their previous inventory.
 - Start, stop and reboot; live security group, volume and network interface details.
 - Workspace-scoped users and a central policy engine with account-scoped Viewer, Operator, and Account Manager assignments.
+- Workspace-scoped OIDC and SAML 2.0 single sign-on with JIT provisioning, claim/group-to-team mapping, and owner break-glass login.
 - Redis sessions, logout/revocation, login rate limiting and renewable collector leases.
 - AES-256-GCM encryption for cloud credentials, bcrypt passwords and same-origin mutation checks.
 - Audit history, retention settings, structured application logs and container log rotation.
@@ -73,6 +74,8 @@ curl http://localhost:8080/api/v1/instances?state=running \
 Create a free isolated workspace with `POST /api/v1/auth/signup` and `{"workspace":"Team name","username":"owner","email":"owner@example.com","password":"Strong-password1!"}`. Email addresses and usernames are globally unique. A 24-hour verification link is sent by email, and sign-in remains disabled until it is used.
 
 Login uses the verified email address and returns a token valid for 12 hours plus an HttpOnly session cookie. Passwords must be 10–72 bytes and contain uppercase, lowercase, a number, and a symbol. Lists use `{"data": [...]}`. Errors use `{"error":"message"}`. Inventory and audit lists support `limit` (default 50, maximum 200) and `offset`.
+
+Workspace administrators configure OIDC or SAML providers under **Workspace settings**. OIDC uses Authorization Code flow with discovery, state, nonce, and PKCE S256. SAML uses a generated per-provider SP key pair, HTTP-Redirect AuthnRequest, HTTP-POST ACS, signed response validation, request correlation, and persistent NameID. Group claims map to Nexus teams without overwriting manual memberships. See the [SSO guide](docs/sso.md).
 
 ## AWS access
 
@@ -113,7 +116,7 @@ For a public deployment, terminate HTTPS at a reverse proxy, set `APP_ORIGIN` to
 
 The application ignores forwarded client-IP headers by default. When running behind a reverse proxy, set `TRUSTED_PROXY_CIDRS` to the proxy address or network (comma-separated) so login rate limiting uses the original client IP. Trust only networks controlled by your deployment; for example, a local proxy can use `127.0.0.1/32`.
 
-This release supports inventory and lifecycle operations for AWS EC2, Alibaba Cloud ECS, Azure Virtual Machines and Google Compute Engine; it does not provision or terminate those compute instances. Alibaba EDS is queried live and supports desktop provisioning, renewal, entitlement, lifecycle, policy changes, maintenance mode, remote commands, and billing conversion. Operations that can create charges require explicit confirmation, and AutoPay defaults to off. The worker is embedded in the Go service and collector requests and leases are workspace-scoped. AWS and Alibaba collection is regional; Azure and GCP use subscription/project-wide inventory endpoints with optional region filtering. Cloud actions are synchronous submissions, with observed state refreshed by collection. Redis requests are coalesced, not a per-request job history. Mutation intents must be stored before an action is submitted; other audit writes are best effort and failures are logged. Versioned SQL migrations run transactionally on startup.
+This release supports inventory and lifecycle operations for AWS EC2, Alibaba Cloud ECS, Azure Virtual Machines and Google Compute Engine; it does not provision or terminate those compute instances. Alibaba EDS is queried live and supports desktop provisioning, renewal, entitlement, lifecycle, policy changes, maintenance mode, remote commands, and billing conversion. Operations that can create charges require explicit confirmation, and AutoPay defaults to off. The worker is embedded in the Go service and collector requests and leases are workspace-scoped. AWS and Alibaba collection is regional; Azure and GCP use subscription/project-wide inventory endpoints with optional region filtering. Cloud actions are synchronous submissions, with observed state refreshed by collection. Redis requests are coalesced, not a per-request job history. Mutation intents must be stored before an action is submitted; other audit writes are best effort and failures are logged. Versioned SQL migrations run transactionally on startup. IdP-initiated SAML and single logout are not enabled; SAML authentication is SP-initiated and logout revokes the Nexus session.
 
 No production cloud action was performed during development. Real account validation requires your AWS/IAM or Alibaba Cloud RAM credentials and permissions.
 

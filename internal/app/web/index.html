@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="Netriun Nexus — multi-cloud orchestration, approvals, access and live health from one control plane">
-  <title>Netriun Nexus</title><link rel="icon" href="/logo.svg" type="image/svg+xml"><script src="/theme.js?v=0.1.12"></script>
-  <link rel="stylesheet" href="/style.css?v=0.1.12"><link rel="stylesheet" href="/theme.css?v=0.1.12"><link rel="stylesheet" href="/auth.css?v=0.1.12"><script src="/docs.js?v=0.1.12" defer></script><script src="/app.js?v=0.1.12" defer></script>
+  <title>Netriun Nexus</title><link rel="icon" href="/logo.svg" type="image/svg+xml"><script src="/theme.js?v=0.1.13"></script>
+  <link rel="stylesheet" href="/style.css?v=0.1.13"><link rel="stylesheet" href="/theme.css?v=0.1.13"><link rel="stylesheet" href="/auth.css?v=0.1.13"><script src="/docs.js?v=0.1.13" defer></script><script src="/app.js?v=0.1.13" defer></script>
 </head>
 <body>
 <section id="login" class="login-screen" hidden>
@@ -19,6 +19,7 @@
     <div class="auth-tabs" role="tablist"><button id="login-tab" class="active" type="button">Sign in</button><button id="signup-tab" type="button">Create workspace</button></div>
     <p id="auth-notice" class="auth-notice" role="status" hidden></p>
     <form id="login-form"><span class="eyebrow">WELCOME BACK</span><h2>Sign in to your workspace</h2><p class="muted">Continue to Netriun Nexus using your verified email.</p><label>Email<input name="email" type="email" autocomplete="username" inputmode="email" maxlength="254" required autofocus></label><label>Password<input name="password" type="password" autocomplete="current-password" required minlength="10" maxlength="72"></label><p id="login-error" class="error" role="alert"></p><button class="primary" type="submit">Sign in <span>↗</span></button><button id="resend-button" class="text-button" type="button" hidden>Resend verification email</button></form>
+    <div id="sso-divider" class="auth-divider"><span>or use workspace SSO</span></div><form id="sso-form" class="sso-login"><label>Workspace SSO code<input name="workspace" autocomplete="organization" minlength="3" maxlength="80" required placeholder="workspace-code"></label><p id="sso-error" class="error" role="alert"></p><button class="secondary" type="submit">Continue with SSO ↗</button><div id="sso-provider-list" class="sso-provider-list"></div></form>
     <form id="signup-form" hidden><span class="eyebrow">COMMUNITY / FREE</span><h2>Create your cloud workspace</h2><p class="muted">Your data and audit history stay isolated from every other workspace.</p><label>Workspace name<input name="workspace" autocomplete="organization" minlength="2" maxlength="100" required placeholder="Acme infrastructure"></label><label>Owner username<input name="username" autocomplete="username" minlength="3" maxlength="100" required></label><label>Email<input name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" required></label><label>Password<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="72" required aria-describedby="password-help"></label><small id="password-help">10+ characters with uppercase, lowercase, number, and symbol.</small><p id="signup-error" class="error" role="alert"></p><button class="primary" type="submit">Create free workspace <span>↗</span></button><small>Includes the owner plus five team members.</small></form>
   </div></div>
 </section>

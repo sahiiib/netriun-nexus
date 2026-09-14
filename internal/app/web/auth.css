@@ -13,6 +13,24 @@
   margin-top: -13px;
 }
 
+.auth-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0 12px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .8px; }
+.auth-divider::before, .auth-divider::after { content: ''; height: 1px; flex: 1; background: var(--line); }
+.sso-login button { width: 100%; }
+.sso-provider-list { display: grid; gap: 7px; margin-top: 10px; }
+.sso-provider-list a { display: block; text-align: center; text-decoration: none; }
+.sso-enforcement { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 18px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.02); }
+.sso-enforcement label { margin: 0; }
+.idp-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap: 12px; }
+.idp-card { padding: 17px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.025); }
+.idp-card > div:first-child { display: flex; align-items: center; justify-content: space-between; }
+.idp-card h3 { margin: 15px 0 5px; }
+.idp-card > p { min-height: 34px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.idp-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.idp-card dl div { padding: 9px; background: rgba(255,255,255,.025); }
+.idp-card dt { color: var(--muted); font-size: 9px; text-transform: uppercase; }
+.idp-card dd { margin: 4px 0 0; font-size: 11px; }
+.idp-card input[readonly] { font-size: 10px; }
+
 .account-card .azure {
   color: #6db7ff;
   border-bottom: 2px solid #1686e8;
@@ -101,6 +119,7 @@ html[data-theme="light"] .doc-note, html[data-theme="light"] .connection-success
 html[data-theme="light"] .provider-choice { background: #f8fbfd; }
 html[data-theme="light"] .provider-choice:has(input:checked) { background: #e9f8f4; }
 html[data-theme="light"] .role-guide strong { color: #193047; }
+html[data-theme="light"] .sso-enforcement, html[data-theme="light"] .idp-card, html[data-theme="light"] .idp-card dl div { background: #f8fbfd; }
 
 @media (max-width: 750px) {
   .docs-layout { grid-template-columns: 1fr; }
@@ -110,4 +129,5 @@ html[data-theme="light"] .role-guide strong { color: #193047; }
   .wizard-progress span { font-size: 0; }
   .wizard-progress b { font-size: 10px; }
   .assignment-target { grid-template-columns: 1fr; }
+  .sso-enforcement { align-items: stretch; flex-direction: column; }
 }

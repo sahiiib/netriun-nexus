@@ -31,7 +31,7 @@ WHERE a.workspace_id=$1 AND (
   SELECT 1
   FROM account_access_assignments aa
   JOIN access_roles ar ON ar.id=aa.role_id AND ar.workspace_id=aa.workspace_id
-  LEFT JOIN user_groups ug ON aa.principal_type='team' AND ug.group_id=aa.group_id AND ug.user_id=$3
+  LEFT JOIN effective_user_groups ug ON aa.principal_type='team' AND ug.group_id=aa.group_id AND ug.user_id=$3
   WHERE aa.workspace_id=$1 AND aa.cloud_account_id=a.id AND aa.service_key='*'
    AND $4=ANY(ar.permissions)
    AND (
@@ -44,7 +44,7 @@ WHERE a.workspace_id=$1 AND (
  OR (
   NOT EXISTS(SELECT 1 FROM account_access_assignments existing WHERE existing.workspace_id=$1 AND existing.cloud_account_id=a.id)
   AND EXISTS(
-   SELECT 1 FROM user_groups legacy
+   SELECT 1 FROM effective_user_groups legacy
    JOIN access_groups g ON g.id=legacy.group_id AND g.workspace_id=$1
    WHERE legacy.user_id=$3 AND legacy.group_id=a.group_id AND (
     ($4 IN ('account.view','compute.view') AND g.view_dashboard)
@@ -112,7 +112,7 @@ SELECT EXISTS(
    SELECT 1
    FROM account_access_assignments aa
    JOIN access_roles ar ON ar.id=aa.role_id AND ar.workspace_id=aa.workspace_id
-   LEFT JOIN user_groups ug ON aa.principal_type='team' AND ug.group_id=aa.group_id AND ug.user_id=$4
+   LEFT JOIN effective_user_groups ug ON aa.principal_type='team' AND ug.group_id=aa.group_id AND ug.user_id=$4
    WHERE aa.workspace_id=$2 AND aa.cloud_account_id=a.id AND aa.service_key='*'
     AND $5=ANY(ar.permissions)
     AND (
@@ -125,7 +125,7 @@ SELECT EXISTS(
   OR (
    NOT EXISTS(SELECT 1 FROM account_access_assignments existing WHERE existing.workspace_id=$2 AND existing.cloud_account_id=a.id)
    AND EXISTS(
-    SELECT 1 FROM user_groups legacy
+    SELECT 1 FROM effective_user_groups legacy
     JOIN access_groups g ON g.id=legacy.group_id AND g.workspace_id=$2
     WHERE legacy.user_id=$4 AND legacy.group_id=a.group_id AND (
      ($5='account.view' AND g.view_dashboard)
@@ -150,7 +150,7 @@ func (p *PolicyEngine) CanGroup(ctx context.Context, u User, groupID int64, capa
 		column = "manage_group_members"
 	}
 	var allowed bool
-	return p.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM user_groups ug JOIN access_groups g ON g.id=ug.group_id WHERE ug.user_id=$1 AND g.id=$2 AND g.workspace_id=$3 AND ug.role='manager' AND g.`+column+`)`, u.ID, groupID, u.WorkspaceID).Scan(&allowed) == nil && allowed
+	return p.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM effective_user_groups ug JOIN access_groups g ON g.id=ug.group_id WHERE ug.user_id=$1 AND g.id=$2 AND g.workspace_id=$3 AND ug.role='manager' AND g.`+column+`)`, u.ID, groupID, u.WorkspaceID).Scan(&allowed) == nil && allowed
 }
 
 func (a *App) accountAccess(r *http.Request, id int64, mode string) bool {

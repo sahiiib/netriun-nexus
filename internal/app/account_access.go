@@ -238,7 +238,7 @@ INSERT INTO account_access_assignments(workspace_id,principal_type,user_id,cloud
 SELECT ca.workspace_id,'user',ug.user_id,ca.id,ar.id,'*','manual','legacy-migration',$3
 FROM cloud_accounts ca
 JOIN access_groups g ON g.id=ca.group_id AND g.workspace_id=ca.workspace_id
-JOIN user_groups ug ON ug.group_id=g.id AND ug.role='manager'
+JOIN effective_user_groups ug ON ug.group_id=g.id AND ug.role='manager'
 JOIN access_roles ar ON ar.workspace_id=ca.workspace_id AND ar.key='account_manager'
 WHERE ca.workspace_id=$1 AND ca.id=$2 AND NOT g.view_dashboard AND g.manage_cloud_accounts
 ON CONFLICT DO NOTHING`, u.WorkspaceID, in.CloudAccount, u.ID)

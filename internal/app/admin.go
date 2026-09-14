@@ -9,7 +9,7 @@ import (
 
 func (a *App) groups(w http.ResponseWriter, r *http.Request) {
 	u := current(r)
-	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT g.*, (SELECT count(*) FROM user_groups ug WHERE ug.group_id=g.id) AS member_count FROM access_groups g WHERE g.workspace_id=$3 AND ($1 OR EXISTS(SELECT 1 FROM user_groups ug WHERE ug.group_id=g.id AND ug.user_id=$2)) ORDER BY g.name) t`, u.Role == "admin", u.ID, u.WorkspaceID)
+	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT g.*, (SELECT count(DISTINCT ug.user_id) FROM effective_user_groups ug WHERE ug.group_id=g.id) AS member_count FROM access_groups g WHERE g.workspace_id=$3 AND ($1 OR EXISTS(SELECT 1 FROM effective_user_groups ug WHERE ug.group_id=g.id AND ug.user_id=$2)) ORDER BY g.name) t`, u.Role == "admin", u.ID, u.WorkspaceID)
 }
 func (a *App) saveGroup(w http.ResponseWriter, r *http.Request) {
 	if !admin(w, r) {
@@ -195,7 +195,7 @@ func (a *App) deleteUser(w http.ResponseWriter, r *http.Request) {
 }
 func (a *App) memberships(w http.ResponseWriter, r *http.Request) {
 	u := current(r)
-	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT ug.*,u.username,g.name AS group_name FROM user_groups ug JOIN users u ON u.id=ug.user_id JOIN access_groups g ON g.id=ug.group_id WHERE g.workspace_id=$3 AND ($1 OR ug.user_id=$2 OR EXISTS(SELECT 1 FROM user_groups own WHERE own.user_id=$2 AND own.group_id=g.id AND own.role='manager' AND g.manage_group_members)) ORDER BY g.name,u.username) t`, u.Role == "admin", u.ID, u.WorkspaceID)
+	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT ug.user_id,ug.group_id,u.username,g.name AS group_name,(array_agg(ug.role ORDER BY CASE ug.role WHEN 'manager' THEN 3 WHEN 'operator' THEN 2 ELSE 1 END DESC))[1] AS role,array_agg(DISTINCT ug.source_type ORDER BY ug.source_type) AS sources FROM effective_user_groups ug JOIN users u ON u.id=ug.user_id JOIN access_groups g ON g.id=ug.group_id WHERE g.workspace_id=$3 AND ($1 OR ug.user_id=$2 OR EXISTS(SELECT 1 FROM effective_user_groups own WHERE own.user_id=$2 AND own.group_id=g.id AND own.role='manager' AND g.manage_group_members)) GROUP BY ug.user_id,ug.group_id,u.username,g.name ORDER BY g.name,u.username) t`, u.Role == "admin", u.ID, u.WorkspaceID)
 }
 func (a *App) saveMembership(w http.ResponseWriter, r *http.Request) {
 	gid, ok := pathID(w, r, "id")

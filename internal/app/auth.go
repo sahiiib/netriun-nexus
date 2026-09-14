@@ -82,10 +82,10 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	}
 	var u User
 	var hash string
-	var verified bool
+	var verified, ssoRequired bool
 	email, emailErr := normalizeEmail(in.Email)
 	if emailErr == nil {
-		err = a.DB.QueryRow(r.Context(), "SELECT u.id,u.workspace_id,w.name,u.username,u.email,u.role,u.is_owner,u.session_version,u.password_hash,u.email_verified_at IS NOT NULL FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE lower(u.email)=$1", email).Scan(&u.ID, &u.WorkspaceID, &u.WorkspaceName, &u.Username, &u.Email, &u.Role, &u.IsOwner, &u.Version, &hash, &verified)
+		err = a.DB.QueryRow(r.Context(), "SELECT u.id,u.workspace_id,w.name,u.username,u.email,u.role,u.is_owner,u.session_version,u.password_hash,u.email_verified_at IS NOT NULL,w.sso_required FROM users u JOIN workspaces w ON w.id=u.workspace_id WHERE lower(u.email)=$1", email).Scan(&u.ID, &u.WorkspaceID, &u.WorkspaceName, &u.Username, &u.Email, &u.Role, &u.IsOwner, &u.Version, &hash, &verified, &ssoRequired)
 	} else {
 		err = emailErr
 	}
@@ -99,6 +99,10 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if !verified {
 		problem(w, 403, "Verify your email before signing in")
+		return
+	}
+	if ssoRequired && !u.IsOwner {
+		problem(w, 403, "This workspace requires SSO; use its identity provider to sign in")
 		return
 	}
 	a.startSession(w, r, u, "auth.login")
@@ -243,15 +247,23 @@ func (a *App) sendNewVerification(ctx context.Context, userID int64, email, user
 }
 
 func (a *App) startSession(w http.ResponseWriter, r *http.Request, u User, action string) {
+	token, ok := a.establishSession(w, r, u)
+	if !ok {
+		return
+	}
+	_ = a.record(r.Context(), u.WorkspaceID, u.ID, u.Username, action, "", nil)
+	write(w, 200, map[string]any{"user": u, "token": token, "expires_in": 43200})
+}
+
+func (a *App) establishSession(w http.ResponseWriter, r *http.Request, u User) (string, bool) {
 	token := secure.Token()
 	b, _ := json.Marshal(session{u.ID, u.Version})
 	if err := a.Redis.Set(r.Context(), "session:"+secure.Digest(token), b, 12*time.Hour).Err(); err != nil {
 		problem(w, 503, "Authentication service unavailable")
-		return
+		return "", false
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: a.SecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: 43200})
-	_ = a.record(r.Context(), u.WorkspaceID, u.ID, u.Username, action, "", nil)
-	write(w, 200, map[string]any{"user": u, "token": token, "expires_in": 43200})
+	return token, true
 }
 
 func (a *App) allowAttempt(r *http.Request, kind string, limit int) bool {

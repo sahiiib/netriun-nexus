@@ -213,7 +213,12 @@ func (a *App) Handler() http.Handler {
 	m.HandleFunc("POST /api/v1/auth/login", a.login)
 	m.HandleFunc("POST /api/v1/auth/signup", a.signup)
 	m.HandleFunc("POST /api/v1/auth/resend-verification", a.resendVerification)
+	m.HandleFunc("GET /api/v1/auth/sso/providers", a.publicIdentityProviders)
 	m.HandleFunc("GET /verify-email", a.verifyEmail)
+	m.HandleFunc("GET /sso/{provider}/start", a.startSSO)
+	m.HandleFunc("GET /sso/{provider}/callback", a.oidcCallback)
+	m.HandleFunc("GET /sso/{provider}/metadata", a.samlMetadata)
+	m.HandleFunc("POST /sso/{provider}/acs", a.samlCallback)
 	routes := map[string]http.HandlerFunc{
 		"GET /api/v1/summary":      a.summary,
 		"GET /api/v1/auth/me":      func(w http.ResponseWriter, r *http.Request) { write(w, 200, current(r)) },
@@ -237,6 +242,10 @@ func (a *App) Handler() http.Handler {
 		"GET /api/v1/users": a.users, "POST /api/v1/users": a.saveUser, "PUT /api/v1/users/{id}": a.saveUser, "DELETE /api/v1/users/{id}": a.deleteUser,
 		"GET /api/v1/memberships": a.memberships, "PUT /api/v1/groups/{id}/members/{userID}": a.saveMembership, "DELETE /api/v1/groups/{id}/members/{userID}": a.deleteMembership,
 		"GET /api/v1/account-access": a.accountAccessPolicy, "PUT /api/v1/account-access": a.saveAccountAccess,
+		"GET /api/v1/identity-providers": a.identityProviders, "POST /api/v1/identity-providers": a.saveIdentityProvider,
+		"PUT /api/v1/identity-providers/{id}": a.saveIdentityProvider, "DELETE /api/v1/identity-providers/{id}": a.deleteIdentityProvider,
+		"GET /api/v1/identity-providers/{id}/group-mappings": a.identityGroupMappings, "PUT /api/v1/identity-providers/{id}/group-mappings": a.identityGroupMappings,
+		"DELETE /api/v1/identity-providers/{id}/group-mappings/{mappingID}": a.deleteIdentityGroupMapping, "PUT /api/v1/sso-settings": a.saveSSOSettings,
 		"GET /api/v1/activity": a.activity, "GET /api/v1/settings": a.settings, "PUT /api/v1/settings": a.saveSettings, "POST /api/v1/collector/run": a.triggerCollector,
 	}
 	for pattern, h := range routes {
@@ -266,7 +275,8 @@ func (a *App) Handler() http.Handler {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 		if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
-			if origin := r.Header.Get("Origin"); origin != "" && origin != a.Origin {
+			samlACS := r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/sso/") && strings.HasSuffix(r.URL.Path, "/acs")
+			if origin := r.Header.Get("Origin"); !samlACS && origin != "" && origin != a.Origin {
 				problem(sw, 403, "Origin not allowed")
 				return
 			}
