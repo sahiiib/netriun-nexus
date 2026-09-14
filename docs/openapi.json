@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Netriun Nexus API",
-    "version": "1.6.0",
-    "description": "Multi-tenant workspace API with local verified-email authentication plus workspace-scoped OIDC and SAML SSO. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. The workspace owner retains local break-glass access when SSO is required."
+    "version": "1.7.0",
+    "description": "Multi-tenant workspace API with live provider refresh, database snapshots, custom account access policies, local verified-email authentication, and workspace-scoped OIDC/SAML SSO. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. The workspace owner retains local break-glass access when SSO is required."
   },
   "servers": [
     {
@@ -1314,6 +1314,26 @@
         }
       }
     },
+    "/access-roles": {
+      "post": {
+        "summary": "Create a reusable custom access policy (admin)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccessRole" } } } },
+        "responses": { "200": { "description": "Policy created" }, "400": { "description": "Invalid key or capability" }, "403": { "description": "Workspace administrator required" }, "409": { "description": "Policy key conflict" } }
+      }
+    },
+    "/access-roles/{id}": {
+      "put": {
+        "summary": "Update a custom access policy (admin)",
+        "parameters": [{ "$ref": "#/components/parameters/ID" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccessRole" } } } },
+        "responses": { "200": { "description": "Policy updated" }, "404": { "description": "Custom policy not found" } }
+      },
+      "delete": {
+        "summary": "Delete an unused custom access policy (admin)",
+        "parameters": [{ "$ref": "#/components/parameters/ID" }],
+        "responses": { "200": { "description": "Policy deleted" }, "409": { "description": "Built-in or assigned policies cannot be deleted" } }
+      }
+    },
     "/identity-providers": {
       "get": {
         "summary": "List safe identity-provider configuration (admin)",
@@ -1563,12 +1583,12 @@
         }
       }
     },
-    "/collector/run": {
+    "/inventory/refresh": {
       "post": {
-        "summary": "Queue collection (admin)",
-        "parameters": [],
+        "summary": "Fetch accessible compute inventory live and atomically update database snapshots",
+        "parameters": [{ "name": "account_id", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1 } }],
         "responses": {
-          "202": {
+          "200": {
             "description": "Success",
             "content": {
               "application/json": {
@@ -1684,6 +1704,17 @@
           }
         },
         "required": ["name", "protocol", "enabled", "jit_provisioning", "config"]
+      },
+      "AccessRole": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,62}$" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "description": { "type": "string", "maxLength": 500 },
+          "permissions": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["account.view", "account.manage", "compute.view", "compute.operate", "eds.view", "eds.operate", "eds.manage"] } }
+        },
+        "required": ["key", "name", "description", "permissions"]
       },
       "IdentityGroupMapping": {
         "type": "object",
@@ -1986,11 +2017,6 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "collector_interval_minutes": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 10080
-          },
           "audit_retention_days": {
             "type": "integer",
             "minimum": 7,
@@ -1998,7 +2024,6 @@
           }
         },
         "required": [
-          "collector_interval_minutes",
           "audit_retention_days"
         ]
       }

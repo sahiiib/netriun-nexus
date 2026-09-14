@@ -38,6 +38,19 @@ func TestSAMLServiceProviderKeyPair(t *testing.T) {
 	}
 }
 
+func TestNormalizeSAMLIDPInitiatedOption(t *testing.T) {
+	cfg := identityProviderConfig{
+		IDPMetadata:       `<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="https://idp.example.com"><IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol"><SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://idp.example.com/sso"/></IDPSSODescriptor></EntityDescriptor>`,
+		AllowIDPInitiated: true,
+	}
+	if err := normalizeIdentityProviderConfig("saml", &cfg, "https://nexus.example.com", "provider"); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.AllowIDPInitiated || cfg.SPCertificate == "" || cfg.SPPrivateKey == "" || cfg.EmailAttribute == "" {
+		t.Fatalf("unexpected normalized SAML config: %#v", cfg)
+	}
+}
+
 func TestClaimValues(t *testing.T) {
 	claims := map[string]any{"email": "person@example.com", "realm": map[string]any{"groups": []any{"operators", "platform", 3}}}
 	if got := firstClaim(claims, "email"); got != "person@example.com" {

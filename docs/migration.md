@@ -3,7 +3,7 @@
 The importer is written in Go and invokes the `sqlite3` CLI in read-only mode. PHP and Python are not required. It preserves legacy IDs, bcrypt password hashes, groups, memberships, accounts, cached instances and audit records inside the bootstrap workspace. `group_admin` becomes `manager`, and the first legacy administrator becomes workspace owner. AWS secrets are encrypted with the target `ENCRYPTION_KEY`.
 
 1. Create a consistent backup using SQLite's `.backup` command; do not copy a live database file without its WAL.
-2. Initialize a fresh target Netriun Nexus database by starting the new application once, then stop the application and its collector. The importer refuses a populated target (other than one bootstrap user).
+2. Initialize a fresh target Netriun Nexus database by starting the new application once, then stop the application. The importer refuses a populated target (other than one bootstrap user).
 3. Export `DATABASE_URL` for the target and its `ENCRYPTION_KEY`. Use an isolated target PostgreSQL instance. The local Compose database is reachable on loopback port `15432` by default.
 4. Validate without committing:
 

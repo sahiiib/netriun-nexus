@@ -13,7 +13,7 @@ docker compose up --build -d
 
 Open http://localhost:8080. Sign in as `admin` with `ADMIN_PASSWORD` from `.env`, or create an independent Community workspace from the sign-up screen. The setup script generates independent secrets and refuses to overwrite an existing `.env`. Never commit this file. Back up `ENCRYPTION_KEY` alongside PostgreSQL backups: encrypted cloud credentials cannot be recovered without it.
 
-The application initializes the schema and bootstrap administrator on first startup. Subsequent boots do not reset passwords. Connect an AWS or Alibaba Cloud account in **Cloud connections**, then use **Sync cloud**; the worker checks for requests every ten seconds.
+The application initializes the schema and bootstrap administrator on first startup. Subsequent boots do not reset passwords. Connect a cloud account in **Cloud connections**; opening a service page fetches live provider data and atomically updates its database snapshot.
 
 ```sh
 docker compose logs -f app
@@ -39,7 +39,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - Start, stop and reboot; live security group, volume and network interface details.
 - Workspace-scoped users and a central policy engine with account-scoped Viewer, Operator, and Account Manager assignments.
 - Workspace-scoped OIDC and SAML 2.0 single sign-on with JIT provisioning, claim/group-to-team mapping, and owner break-glass login.
-- Redis sessions, logout/revocation, login rate limiting and renewable collector leases.
+- Redis sessions, local and federated logout, login rate limiting, and live-refresh request leases.
 - AES-256-GCM encryption for cloud credentials, bcrypt passwords and same-origin mutation checks.
 - Audit history, retention settings, structured application logs and container log rotation.
 - Searchable in-app Documentation Center and contextual Help, backed by one structured content source and the stable [documentation map](docs/index.md).
@@ -95,7 +95,7 @@ The portal includes a searchable Documentation page and a contextual **Help** bu
 
 ## Go development
 
-Go version is declared in `go.mod`. `make run` loads `.env`, starts PostgreSQL and Redis in containers, stops the Compose application service to prevent two collectors from writing concurrently, and runs the Go process on `http://localhost:8080`. It derives host-reachable database URLs from the Compose passwords, using local ports `15432` and `16379` by default.
+Go version is declared in `go.mod`. `make run` loads `.env`, starts PostgreSQL and Redis in containers, stops the Compose application service to prevent duplicate local application processes, and runs the Go process on `http://localhost:8080`. It derives host-reachable database URLs from the Compose passwords, using local ports `15432` and `16379` by default.
 
 Email verification uses SMTP with mandatory STARTTLS. Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_ADDRESS`, and `SMTP_FROM_NAME`; use an app password rather than a primary mailbox password.
 
@@ -116,7 +116,7 @@ For a public deployment, terminate HTTPS at a reverse proxy, set `APP_ORIGIN` to
 
 The application ignores forwarded client-IP headers by default. When running behind a reverse proxy, set `TRUSTED_PROXY_CIDRS` to the proxy address or network (comma-separated) so login rate limiting uses the original client IP. Trust only networks controlled by your deployment; for example, a local proxy can use `127.0.0.1/32`.
 
-This release supports inventory and lifecycle operations for AWS EC2, Alibaba Cloud ECS, Azure Virtual Machines and Google Compute Engine; it does not provision or terminate those compute instances. Alibaba EDS is queried live and supports desktop provisioning, renewal, entitlement, lifecycle, policy changes, maintenance mode, remote commands, and billing conversion. Operations that can create charges require explicit confirmation, and AutoPay defaults to off. The worker is embedded in the Go service and collector requests and leases are workspace-scoped. AWS and Alibaba collection is regional; Azure and GCP use subscription/project-wide inventory endpoints with optional region filtering. Cloud actions are synchronous submissions, with observed state refreshed by collection. Redis requests are coalesced, not a per-request job history. Mutation intents must be stored before an action is submitted; other audit writes are best effort and failures are logged. Versioned SQL migrations run transactionally on startup. IdP-initiated SAML and single logout are not enabled; SAML authentication is SP-initiated and logout revokes the Nexus session.
+This release supports inventory and lifecycle operations for AWS EC2, Alibaba Cloud ECS, Azure Virtual Machines and Google Compute Engine; it does not provision or terminate those compute instances. Compute inventory is fetched live when its page opens and each successful account/region result replaces the prior database snapshot; failed regions retain their last healthy data. Alibaba EDS is also queried live and its desktop, user, and region responses are stored as service snapshots. Operations that can create charges require explicit confirmation, and AutoPay defaults to off. AWS and Alibaba collection is regional; Azure and GCP use subscription/project-wide inventory endpoints with optional region filtering. Mutation intents must be stored before an action is submitted; other audit writes are best effort and failures are logged. Versioned SQL migrations run transactionally on startup. SAML supports SP-initiated login, optional IdP-initiated login, and signed Single Logout responses; OIDC uses discovery and RP-initiated logout when the provider publishes an end-session endpoint.
 
 No production cloud action was performed during development. Real account validation requires your AWS/IAM or Alibaba Cloud RAM credentials and permissions.
 

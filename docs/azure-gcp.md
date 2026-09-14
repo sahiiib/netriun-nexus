@@ -47,4 +47,4 @@ regularly and update the connection before disabling the previous credential.
 Before saving either provider, use **Test connection** in the connection wizard.
 Nexus verifies the identity and required Compute read access, then enables Save.
 The verification is valid for ten minutes and is consumed when the connection is saved.
-After saving, run **Sync cloud** to populate the inventory.
+After saving, open the compute page. Nexus fetches the subscription/project inventory live and updates the database snapshot.

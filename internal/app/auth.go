@@ -15,8 +15,11 @@ import (
 )
 
 type session struct {
-	UserID  int64 `json:"user_id"`
-	Version int   `json:"version"`
+	UserID      int64  `json:"user_id"`
+	Version     int    `json:"version"`
+	SSOProvider string `json:"sso_provider,omitempty"`
+	SSOProtocol string `json:"sso_protocol,omitempty"`
+	SSOSubject  string `json:"sso_subject,omitempty"`
 }
 
 const (
@@ -257,7 +260,7 @@ func (a *App) startSession(w http.ResponseWriter, r *http.Request, u User, actio
 
 func (a *App) establishSession(w http.ResponseWriter, r *http.Request, u User) (string, bool) {
 	token := secure.Token()
-	b, _ := json.Marshal(session{u.ID, u.Version})
+	b, _ := json.Marshal(session{UserID: u.ID, Version: u.Version})
 	if err := a.Redis.Set(r.Context(), "session:"+secure.Digest(token), b, 12*time.Hour).Err(); err != nil {
 		problem(w, 503, "Authentication service unavailable")
 		return "", false
@@ -311,13 +314,23 @@ func containsIP(networks []*net.IPNet, ip net.IP) bool {
 	return false
 }
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
-	if err := a.Redis.Del(r.Context(), "session:"+secure.Digest(sessionToken(r))).Err(); err != nil {
+	token := sessionToken(r)
+	key := "session:" + secure.Digest(token)
+	var s session
+	if raw, err := a.Redis.Get(r.Context(), key).Bytes(); err == nil {
+		_ = json.Unmarshal(raw, &s)
+	}
+	if err := a.Redis.Del(r.Context(), key).Err(); err != nil {
 		problem(w, 503, "Could not revoke session")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/", MaxAge: -1, HttpOnly: true, Secure: a.SecureCookies, SameSite: http.SameSiteStrictMode})
 	http.SetCookie(w, &http.Cookie{Name: legacySessionCookie, Path: "/", MaxAge: -1, HttpOnly: true, Secure: a.SecureCookies, SameSite: http.SameSiteStrictMode})
-	write(w, 200, map[string]bool{"ok": true})
+	response := map[string]any{"ok": true}
+	if redirectURL := a.ssoLogoutURL(r.Context(), s); redirectURL != "" {
+		response["redirect_url"] = redirectURL
+	}
+	write(w, 200, response)
 }
 func admin(w http.ResponseWriter, r *http.Request) bool {
 	if current(r).Role != "admin" {

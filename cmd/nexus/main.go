@@ -1,4 +1,4 @@
-// Command nexus starts the Netriun Nexus service and background collector.
+// Command nexus starts the Netriun Nexus service.
 package main
 
 import (
@@ -35,8 +35,6 @@ func run() error {
 		addr = ":8080"
 	}
 	srv := &http.Server{Addr: addr, Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second}
-	workerDone := make(chan struct{})
-	go func() { defer close(workerDone); a.Scheduler(ctx) }()
 	serverErr := make(chan error, 1)
 	go func() { slog.Info("Netriun Nexus listening", "address", addr); serverErr <- srv.ListenAndServe() }()
 	select {
@@ -47,7 +45,6 @@ func run() error {
 	shutdown, c := context.WithTimeout(context.Background(), 15*time.Second)
 	defer c()
 	srv.Shutdown(shutdown)
-	<-workerDone
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

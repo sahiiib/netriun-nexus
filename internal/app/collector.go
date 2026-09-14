@@ -14,63 +14,23 @@ import (
 	"github.com/netriun/nexus/internal/secure"
 )
 
-// Scheduler uses a durable Redis request flag and a renewable distributed lease.
-func (a *App) Scheduler(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			rows, err := a.DB.Query(ctx, "SELECT workspace_id,last_collector_run_at IS NULL OR last_collector_run_at < now()-make_interval(mins=>collector_interval_minutes) FROM settings ORDER BY workspace_id")
-			if err != nil {
-				continue
-			}
-			type workspace struct {
-				id  int64
-				due bool
-			}
-			var workspaces []workspace
-			for rows.Next() {
-				var ws workspace
-				if rows.Scan(&ws.id, &ws.due) == nil {
-					workspaces = append(workspaces, ws)
-				}
-			}
-			rows.Close()
-			for _, ws := range workspaces {
-				requested, redisErr := a.Redis.Exists(ctx, collectorKey("requested", ws.id)).Result()
-				if redisErr == nil && (ws.due || requested > 0) {
-					if err = a.Collect(ctx, ws.id); err != nil {
-						slog.Error("collection failed", "workspace_id", ws.id, "error", err)
-					}
-				}
-			}
-		}
-	}
-}
-func (a *App) triggerCollector(w http.ResponseWriter, r *http.Request) {
-	if !admin(w, r) {
-		return
-	}
-	if err := a.Redis.Set(r.Context(), collectorKey("requested", current(r).WorkspaceID), "1", 0).Err(); err != nil {
-		problem(w, 503, "Collector unavailable")
-		return
-	}
-	a.audit(r, "collector.requested", "", nil)
-	write(w, 202, map[string]string{"status": "queued"})
-}
 func collectorKey(kind string, workspaceID int64) string {
 	return fmt.Sprintf("collector:%s:%d", kind, workspaceID)
 }
 
 func (a *App) Collect(parent context.Context, workspaceID int64) error {
+	return a.collectAccounts(parent, workspaceID, nil)
+}
+
+func (a *App) collectAccounts(parent context.Context, workspaceID int64, accountIDs []int64) error {
 	token := secure.Token()
 	lockKey := collectorKey("lock", workspaceID)
 	locked, err := a.Redis.SetNX(parent, lockKey, token, 60*time.Second).Result()
-	if err != nil || !locked {
+	if err != nil {
 		return err
+	}
+	if !locked {
+		return errors.New("a live refresh is already in progress")
 	}
 	ctx, cancel := context.WithTimeout(parent, 30*time.Minute)
 	defer cancel()
@@ -99,10 +59,7 @@ func (a *App) Collect(parent context.Context, workspaceID int64) error {
 		defer c()
 		a.Redis.Eval(release, `if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) else return 0 end`, []string{lockKey}, token)
 	}()
-	if err = a.Redis.Del(ctx, collectorKey("requested", workspaceID)).Err(); err != nil {
-		return err
-	}
-	rows, err := a.DB.Query(ctx, "SELECT id,provider,regions FROM cloud_accounts WHERE workspace_id=$1 AND provider IN ('aws','alibaba','azure','gcp') ORDER BY id", workspaceID)
+	rows, err := a.DB.Query(ctx, "SELECT id,provider,regions FROM cloud_accounts WHERE workspace_id=$1 AND provider IN ('aws','alibaba','azure','gcp') AND ($2::bigint[] IS NULL OR id=ANY($2)) ORDER BY id", workspaceID, accountIDs)
 	if err != nil {
 		return err
 	}
@@ -185,6 +142,69 @@ func (a *App) Collect(parent context.Context, workspaceID int64) error {
 	a.record(ctx, workspaceID, 0, "system", "collector.completed", "", map[string]int{"accounts": len(accounts), "failed_accounts": failures})
 	_, err = a.DB.Exec(ctx, "DELETE FROM audit_log WHERE workspace_id=$1 AND created_at < now()-make_interval(days=>(SELECT audit_retention_days FROM settings WHERE workspace_id=$1))", workspaceID)
 	return err
+}
+
+// refreshInventory fetches only accounts the current user may view, waits for
+// provider responses, and commits each successful account/region atomically.
+func (a *App) refreshInventory(w http.ResponseWriter, r *http.Request) {
+	u := current(r)
+	allowed, err := a.Policy.AccessibleAccountIDs(r.Context(), u, CapabilityAccountView)
+	if err != nil {
+		dbError(w, err)
+		return
+	}
+	requested, ok := a.optionalAccountID(w, r)
+	if !ok {
+		return
+	}
+	ids := allowed
+	if requested > 0 {
+		ids = nil
+		if slices.Contains(allowed, requested) {
+			ids = []int64{requested}
+		}
+		if len(ids) == 0 {
+			problem(w, 403, "Cloud account access required")
+			return
+		}
+	}
+	if len(ids) == 0 {
+		write(w, 200, map[string]any{"status": "current", "accounts": 0})
+		return
+	}
+	refreshCtx, cancel := context.WithTimeout(r.Context(), 55*time.Second)
+	defer cancel()
+	if err = a.collectAccounts(refreshCtx, u.WorkspaceID, ids); err != nil {
+		problem(w, 503, "Live refresh could not complete: "+err.Error())
+		return
+	}
+	type failedAccount struct {
+		ID      int64  `json:"id"`
+		Message string `json:"message"`
+		Code    string `json:"code"`
+	}
+	failed := []failedAccount{}
+	rows, queryErr := a.DB.Query(r.Context(), `SELECT id,sync_error,sync_error_code FROM cloud_accounts WHERE workspace_id=$1 AND id=ANY($2) AND sync_error<>'' ORDER BY id`, u.WorkspaceID, ids)
+	if queryErr != nil {
+		dbError(w, queryErr)
+		return
+	}
+	for rows.Next() {
+		var item failedAccount
+		if queryErr = rows.Scan(&item.ID, &item.Message, &item.Code); queryErr != nil {
+			rows.Close()
+			dbError(w, queryErr)
+			return
+		}
+		failed = append(failed, item)
+	}
+	rows.Close()
+	a.audit(r, "inventory.live_refreshed", "", map[string]any{"account_ids": ids})
+	status := "current"
+	if len(failed) > 0 {
+		status = "partial"
+	}
+	write(w, 200, map[string]any{"status": status, "accounts": len(ids), "failed_accounts": failed, "refreshed_at": time.Now().UTC()})
 }
 
 // Azure and GCP expose subscription/project-wide compute inventory endpoints.

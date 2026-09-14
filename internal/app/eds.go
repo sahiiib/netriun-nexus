@@ -76,6 +76,10 @@ func (a *App) edsDesktops(w http.ResponseWriter, r *http.Request) {
 		edsProviderError(w, "describe_desktops", accountID, region, err)
 		return
 	}
+	if err = a.saveServiceSnapshot(r.Context(), current(r).WorkspaceID, accountID, "eds.desktops", region, map[string]any{"data": items}); err != nil {
+		dbError(w, err)
+		return
+	}
 	write(w, 200, map[string]any{"data": items})
 }
 
@@ -155,6 +159,10 @@ func (a *App) edsDesktopsAllRegions(w http.ResponseWriter, r *http.Request) {
 		items = append(items, regionResult...)
 	}
 	sort.Strings(failed)
+	if err = a.saveServiceSnapshot(r.Context(), u.WorkspaceID, accountID, "eds.desktops", "all", map[string]any{"data": items, "failed_regions": failed}); err != nil {
+		dbError(w, err)
+		return
+	}
 	write(w, 200, map[string]any{"data": items, "failed_regions": failed})
 }
 
@@ -179,13 +187,6 @@ func (a *App) edsRegions(w http.ResponseWriter, r *http.Request) {
 		TotalDesktops int           `json:"total_desktops"`
 	}
 	cacheKey := edsRegionsCacheKey(u.WorkspaceID, accountID)
-	if raw, cacheErr := a.Redis.Get(r.Context(), cacheKey).Bytes(); cacheErr == nil {
-		var cached regionResponse
-		if json.Unmarshal(raw, &cached) == nil {
-			write(w, 200, cached)
-			return
-		}
-	}
 	credentials, err := a.credentials(r.Context(), u.WorkspaceID, accountID, "alibaba")
 	if err != nil {
 		problem(w, 400, "The selected account is not an Alibaba Cloud connection")
@@ -251,6 +252,10 @@ func (a *App) edsRegions(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("Alibaba EDS region cache write failed", "account_id", accountID, "error", cacheErr)
 		}
 	}
+	if err = a.saveServiceSnapshot(r.Context(), u.WorkspaceID, accountID, "eds.regions", "", payload); err != nil {
+		dbError(w, err)
+		return
+	}
 	write(w, 200, payload)
 }
 
@@ -285,6 +290,10 @@ func (a *App) edsUsers(w http.ResponseWriter, r *http.Request) {
 	items, err := cloud.EDSUsers(ctx, clients.User)
 	if err != nil {
 		edsProviderError(w, "describe_users", accountID, region, err)
+		return
+	}
+	if err = a.saveServiceSnapshot(r.Context(), current(r).WorkspaceID, accountID, "eds.users", region, map[string]any{"data": items}); err != nil {
+		dbError(w, err)
 		return
 	}
 	write(w, 200, map[string]any{"data": items})

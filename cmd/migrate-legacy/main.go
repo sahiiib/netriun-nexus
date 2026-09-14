@@ -197,17 +197,8 @@ func run(source string, apply bool) error {
 			}
 		}
 	}
-	for _, r := range data["app_settings"] {
-		if text(r, "key") == "collector_interval_minutes" {
-			n, _ := strconv.Atoi(text(r, "value"))
-			if n >= 1 && n <= 10080 {
-				if err = insert("UPDATE settings SET collector_interval_minutes=$1 WHERE workspace_id=$2", n, workspaceID); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	// Delay the first sync for review; old logrotate options are replaced by container rotation.
+	// Legacy polling intervals are intentionally ignored. Inventory is refreshed
+	// live when a service page is opened.
 	if err = insert("UPDATE settings SET last_collector_run_at=now() WHERE workspace_id=$1", workspaceID); err != nil {
 		return err
 	}

@@ -11,12 +11,14 @@ Workspace Owner and Workspace Administrator are workspace-level roles. They are 
 ## Core objects
 
 - **Principal:** a Nexus user or team.
-- **Role:** a named set of capabilities. Built-in roles are Viewer, Operator, and Account Manager.
+- **Role:** a reusable named set of capabilities. Built-in roles are Viewer, Operator, and Account Manager; workspace administrators may create custom policies in the portal.
 - **Assignment:** connects a principal, role, cloud account, and optional service scope.
 - **Membership grant:** connects a user to a team and records whether the source is manual or SSO.
 - **Effective access:** the union of applicable direct and team assignments, always constrained to the current workspace.
 
 Initial capabilities include `account.view`, `account.manage`, `compute.view`, `compute.operate`, `eds.view`, `eds.operate`, and `eds.manage`. Capability names are service-oriented so future services can add permissions without adding boolean columns.
+
+Custom policy keys are stable after creation. Implied read prerequisites are added automatically (for example, `compute.operate` includes compute and account view). Built-in policies cannot be edited or deleted, and a custom policy cannot be deleted while an assignment references it.
 
 ## Account and service scope
 

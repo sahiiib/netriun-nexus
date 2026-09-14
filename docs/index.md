@@ -33,14 +33,14 @@ This is the canonical information architecture for product documentation. Keep t
 ## 5. Operations
 
 - Resource lifecycle actions
-- Collection, refresh, and retention
+- Live page refresh, database snapshots, and retention
 - Local, Docker, and Kubernetes operation
 - Legacy migration — see [migration guide](migration.md)
 
 ## 6. Troubleshooting
 
 - Connection error codes and remediation
-- Collection and sync failures
+- Live refresh and snapshot failures
 - Email verification problems
 - API reference — see [OpenAPI specification](openapi.json)
 

@@ -46,6 +46,7 @@ type identityProviderConfig struct {
 	GroupsAttribute   string   `json:"groups_attribute,omitempty"`
 	SPCertificate     string   `json:"sp_certificate,omitempty"`
 	SPPrivateKey      string   `json:"sp_private_key,omitempty"`
+	AllowIDPInitiated bool     `json:"allow_idp_initiated,omitempty"`
 }
 
 type identityProviderInput struct {
@@ -112,6 +113,7 @@ func (a *App) identityProviders(w http.ResponseWriter, r *http.Request) {
 			"email_claim": cfg.EmailClaim, "username_claim": cfg.UsernameClaim, "groups_claim": cfg.GroupsClaim,
 			"email_attribute": cfg.EmailAttribute, "username_attribute": cfg.UsernameAttribute, "groups_attribute": cfg.GroupsAttribute,
 			"client_secret_configured": cfg.ClientSecret != "", "idp_metadata_configured": cfg.IDPMetadata != "",
+			"allow_idp_initiated": cfg.AllowIDPInitiated,
 		}
 		providers = append(providers, map[string]any{
 			"id": p.ID, "public_id": p.PublicID, "name": p.Name, "protocol": p.Protocol, "enabled": p.Enabled,
@@ -611,16 +613,33 @@ func (a *App) samlCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stateToken := r.FormValue("RelayState")
-	p, cfg, state, ok := a.consumeSSOState(w, r, stateToken, "saml")
-	if !ok {
-		return
+	var p identityProvider
+	var cfg identityProviderConfig
+	var state ssoState
+	var ok bool
+	if stateToken == "" {
+		var err error
+		p, cfg, err = a.loadIdentityProvider(r.Context(), r.PathValue("provider"), true)
+		if err != nil || p.Protocol != "saml" || !cfg.AllowIDPInitiated {
+			a.ssoFailure(w, r)
+			return
+		}
+	} else {
+		p, cfg, state, ok = a.consumeSSOState(w, r, stateToken, "saml")
+		if !ok {
+			return
+		}
 	}
 	sp, err := a.samlServiceProvider(p, cfg)
 	if err != nil {
 		a.ssoFailure(w, r)
 		return
 	}
-	assertion, err := sp.ParseResponse(r, []string{state.RequestID})
+	requestIDs := []string(nil)
+	if state.RequestID != "" {
+		requestIDs = []string{state.RequestID}
+	}
+	assertion, err := sp.ParseResponse(r, requestIDs)
 	if err != nil || assertion.Subject == nil || assertion.Subject.NameID == nil || assertion.Subject.NameID.Format != string(saml.PersistentNameIDFormat) {
 		a.ssoFailure(w, r)
 		return
@@ -682,7 +701,8 @@ func (a *App) samlServiceProvider(p identityProvider, cfg identityProviderConfig
 	}
 	metadataURL, _ := url.Parse(a.Origin + "/sso/" + p.PublicID + "/metadata")
 	acsURL, _ := url.Parse(a.Origin + "/sso/" + p.PublicID + "/acs")
-	return &saml.ServiceProvider{EntityID: metadataURL.String(), Key: keyPair.PrivateKey.(*rsa.PrivateKey), Certificate: keyPair.Leaf, MetadataURL: *metadataURL, AcsURL: *acsURL, IDPMetadata: metadata, AuthnNameIDFormat: saml.PersistentNameIDFormat, SignatureMethod: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"}, nil
+	sloURL, _ := url.Parse(a.Origin + "/sso/" + p.PublicID + "/slo")
+	return &saml.ServiceProvider{EntityID: metadataURL.String(), Key: keyPair.PrivateKey.(*rsa.PrivateKey), Certificate: keyPair.Leaf, MetadataURL: *metadataURL, AcsURL: *acsURL, SloURL: *sloURL, IDPMetadata: metadata, AuthnNameIDFormat: saml.PersistentNameIDFormat, SignatureMethod: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256", AllowIDPInitiated: cfg.AllowIDPInitiated, DefaultRedirectURI: a.Origin}, nil
 }
 
 func (a *App) finishSSO(w http.ResponseWriter, r *http.Request, p identityProvider, identity ssoIdentity) {
@@ -751,10 +771,96 @@ FROM identity_group_mappings m WHERE m.workspace_id=$1 AND m.provider_id=$2 AND 
 		return
 	}
 	_ = a.record(r.Context(), u.WorkspaceID, u.ID, u.Username, "auth.sso_login", fmt.Sprint(p.ID), map[string]any{"provider": p.Name, "protocol": p.Protocol, "groups": identity.Groups})
-	if _, ok := a.establishSession(w, r, u); !ok {
+	if _, ok := a.establishSSOSession(w, r, u, p, identity.Subject); !ok {
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func (a *App) establishSSOSession(w http.ResponseWriter, r *http.Request, u User, p identityProvider, subject string) (string, bool) {
+	token := secure.Token()
+	raw, _ := json.Marshal(session{UserID: u.ID, Version: u.Version, SSOProvider: p.PublicID, SSOProtocol: p.Protocol, SSOSubject: subject})
+	if err := a.Redis.Set(r.Context(), "session:"+secure.Digest(token), raw, 12*time.Hour).Err(); err != nil {
+		problem(w, 503, "Authentication service unavailable")
+		return "", false
+	}
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: a.SecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: 43200})
+	return token, true
+}
+
+func (a *App) ssoLogoutURL(ctx context.Context, s session) string {
+	if s.SSOProvider == "" || s.SSOSubject == "" {
+		return ""
+	}
+	p, cfg, err := a.loadIdentityProvider(ctx, s.SSOProvider, true)
+	if err != nil {
+		return ""
+	}
+	if p.Protocol == "saml" {
+		sp, err := a.samlServiceProvider(p, cfg)
+		if err != nil || sp.GetSLOBindingLocation(saml.HTTPRedirectBinding) == "" {
+			return ""
+		}
+		relay := secure.Token()
+		raw, _ := json.Marshal(ssoState{ProviderID: p.ID})
+		if a.Redis.Set(ctx, "sso-logout:"+secure.Digest(relay), raw, 10*time.Minute).Err() != nil {
+			return ""
+		}
+		destination, err := sp.MakeRedirectLogoutRequest(s.SSOSubject, relay)
+		if err == nil {
+			return destination.String()
+		}
+	}
+	if p.Protocol == "oidc" {
+		provider, err := oidc.NewProvider(ctx, cfg.IssuerURL)
+		if err != nil {
+			return ""
+		}
+		var discovery struct {
+			EndSessionEndpoint string `json:"end_session_endpoint"`
+		}
+		if provider.Claims(&discovery) == nil {
+			endpoint, parseErr := url.Parse(discovery.EndSessionEndpoint)
+			if parseErr == nil && endpoint.Scheme == "https" && endpoint.Host != "" {
+				query := endpoint.Query()
+				query.Set("client_id", cfg.ClientID)
+				query.Set("post_logout_redirect_uri", a.Origin)
+				endpoint.RawQuery = query.Encode()
+				return endpoint.String()
+			}
+		}
+	}
+	return ""
+}
+
+func (a *App) samlLogoutCallback(w http.ResponseWriter, r *http.Request) {
+	relay := r.URL.Query().Get("RelayState")
+	if relay == "" {
+		_ = r.ParseForm()
+		relay = r.FormValue("RelayState")
+	}
+	raw, err := a.Redis.GetDel(r.Context(), "sso-logout:"+secure.Digest(relay)).Bytes()
+	var state ssoState
+	if relay == "" || err != nil || json.Unmarshal(raw, &state) != nil {
+		a.ssoFailure(w, r)
+		return
+	}
+	var publicID string
+	if a.DB.QueryRow(r.Context(), "SELECT public_id FROM identity_providers WHERE id=$1 AND enabled", state.ProviderID).Scan(&publicID) != nil || publicID != r.PathValue("provider") {
+		a.ssoFailure(w, r)
+		return
+	}
+	p, cfg, err := a.loadIdentityProvider(r.Context(), publicID, true)
+	if err != nil || p.Protocol != "saml" {
+		a.ssoFailure(w, r)
+		return
+	}
+	sp, err := a.samlServiceProvider(p, cfg)
+	if err != nil || sp.ValidateLogoutResponseRequest(r) != nil {
+		a.ssoFailure(w, r)
+		return
+	}
+	http.Redirect(w, r, "/?logout=success", http.StatusSeeOther)
 }
 
 func (a *App) availableSSOUsername(ctx context.Context, tx pgx.Tx, preferred, email string) string {

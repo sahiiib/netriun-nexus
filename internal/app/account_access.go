@@ -3,9 +3,126 @@ package app
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
+
+var accessRoleKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,62}$`)
+
+type accessRoleInput struct {
+	Key         string   `json:"key"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Permissions []string `json:"permissions"`
+}
+
+func validRolePermissions(values []string) ([]string, bool) {
+	valid := make(map[string]bool, len(supportedCapabilities))
+	for _, capability := range supportedCapabilities {
+		valid[string(capability)] = true
+	}
+	unique := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(strings.ToLower(value))
+		if !valid[value] {
+			return nil, false
+		}
+		unique[value] = true
+	}
+	if unique[string(CapabilityAccountManage)] {
+		unique[string(CapabilityAccountView)] = true
+	}
+	if unique[string(CapabilityComputeView)] || unique[string(CapabilityComputeAction)] {
+		unique[string(CapabilityAccountView)] = true
+	}
+	if unique[string(CapabilityComputeAction)] {
+		unique[string(CapabilityComputeView)] = true
+	}
+	if unique[string(CapabilityEDSView)] || unique[string(CapabilityEDSOperate)] || unique[string(CapabilityEDSManage)] {
+		unique[string(CapabilityAccountView)] = true
+		unique[string(CapabilityEDSView)] = true
+	}
+	if unique[string(CapabilityEDSManage)] {
+		unique[string(CapabilityEDSOperate)] = true
+	}
+	permissions := make([]string, 0, len(unique))
+	for _, capability := range supportedCapabilities {
+		if unique[string(capability)] {
+			permissions = append(permissions, string(capability))
+		}
+	}
+	return permissions, len(permissions) > 0
+}
+
+func (a *App) saveAccessRole(w http.ResponseWriter, r *http.Request) {
+	if !admin(w, r) {
+		return
+	}
+	var in accessRoleInput
+	if !decode(w, r, &in) {
+		return
+	}
+	in.Key = strings.TrimSpace(strings.ToLower(in.Key))
+	in.Name = strings.TrimSpace(in.Name)
+	in.Description = strings.TrimSpace(in.Description)
+	permissions, valid := validRolePermissions(in.Permissions)
+	if !accessRoleKeyPattern.MatchString(in.Key) || len(in.Name) < 1 || len(in.Name) > 100 || len(in.Description) > 500 || !valid {
+		problem(w, 400, "Use a valid key and name, and select at least one supported capability")
+		return
+	}
+	workspaceID := current(r).WorkspaceID
+	var id int64
+	var err error
+	if r.Method == http.MethodPost {
+		err = a.DB.QueryRow(r.Context(), `INSERT INTO access_roles(workspace_id,key,name,description,permissions) VALUES($1,$2,$3,$4,$5) RETURNING id`, workspaceID, in.Key, in.Name, in.Description, permissions).Scan(&id)
+	} else {
+		var ok bool
+		id, ok = pathID(w, r, "id")
+		if !ok {
+			return
+		}
+		err = a.DB.QueryRow(r.Context(), `UPDATE access_roles SET name=$1,description=$2,permissions=$3,updated_at=now() WHERE id=$4 AND workspace_id=$5 AND NOT built_in AND key=$6 RETURNING id`, in.Name, in.Description, permissions, id, workspaceID, in.Key).Scan(&id)
+	}
+	if err != nil {
+		dbError(w, err)
+		return
+	}
+	a.audit(r, "access_role.saved", strconv.FormatInt(id, 10), map[string]any{"key": in.Key, "permissions": permissions})
+	write(w, 200, map[string]int64{"id": id})
+}
+
+func (a *App) deleteAccessRole(w http.ResponseWriter, r *http.Request) {
+	if !admin(w, r) {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var builtIn bool
+	var assignments int
+	err := a.DB.QueryRow(r.Context(), `SELECT r.built_in,count(a.id) FROM access_roles r LEFT JOIN account_access_assignments a ON a.role_id=r.id WHERE r.id=$1 AND r.workspace_id=$2 GROUP BY r.id`, id, current(r).WorkspaceID).Scan(&builtIn, &assignments)
+	if err != nil {
+		dbError(w, err)
+		return
+	}
+	if builtIn {
+		problem(w, 409, "Built-in policies cannot be deleted")
+		return
+	}
+	if assignments > 0 {
+		problem(w, 409, "Remove this policy from every account assignment before deleting it")
+		return
+	}
+	if _, err = a.DB.Exec(r.Context(), "DELETE FROM access_roles WHERE id=$1 AND workspace_id=$2", id, current(r).WorkspaceID); err != nil {
+		dbError(w, err)
+		return
+	}
+	a.audit(r, "access_role.deleted", strconv.FormatInt(id, 10), nil)
+	write(w, 200, map[string]bool{"ok": true})
+}
 
 type accountAccessInput struct {
 	PrincipalType string `json:"principal_type"`
@@ -136,14 +253,10 @@ SELECT row_to_json(t) FROM (
 		identity := User{ID: person.id, WorkspaceID: u.WorkspaceID, Role: person.role}
 		for _, account := range policyAccounts {
 			capabilities := []string{}
-			if a.Policy.CanAccount(r.Context(), identity, account.id, CapabilityAccountView) {
-				capabilities = append(capabilities, string(CapabilityAccountView))
-			}
-			if a.Policy.CanAccount(r.Context(), identity, account.id, CapabilityComputeAction) {
-				capabilities = append(capabilities, string(CapabilityComputeAction))
-			}
-			if a.Policy.CanAccount(r.Context(), identity, account.id, CapabilityAccountManage) {
-				capabilities = append(capabilities, string(CapabilityAccountManage))
+			for _, capability := range supportedCapabilities {
+				if a.Policy.CanAccount(r.Context(), identity, account.id, capability) {
+					capabilities = append(capabilities, string(capability))
+				}
 			}
 			role := "none"
 			if person.role == "admin" {
@@ -155,10 +268,31 @@ SELECT row_to_json(t) FROM (
 			} else if containsCapability(capabilities, CapabilityAccountView) {
 				role = "viewer"
 			}
+			if person.role != "admin" {
+				for _, candidate := range roles {
+					permissions, _ := candidate["permissions"].([]string)
+					if sameStrings(capabilities, permissions) {
+						role, _ = candidate["key"].(string)
+						break
+					}
+				}
+			}
 			effective = append(effective, map[string]any{"user_id": person.id, "username": person.username, "cloud_account_id": account.id, "cloud_account_name": account.name, "role_key": role, "capabilities": capabilities})
 		}
 	}
 	write(w, 200, map[string]any{"assignments": assignments, "roles": roles, "effective": effective})
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for _, value := range left {
+		if !slices.Contains(right, value) {
+			return false
+		}
+	}
+	return true
 }
 
 func containsCapability(values []string, capability Capability) bool {

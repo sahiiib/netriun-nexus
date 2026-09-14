@@ -264,24 +264,23 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 	if !admin(w, r) {
 		return
 	}
-	a.list(w, r, "SELECT row_to_json(t) FROM (SELECT collector_interval_minutes,audit_retention_days,last_collector_run_at FROM settings WHERE workspace_id=$1) t", current(r).WorkspaceID)
+	a.list(w, r, "SELECT row_to_json(t) FROM (SELECT audit_retention_days,last_collector_run_at FROM settings WHERE workspace_id=$1) t", current(r).WorkspaceID)
 }
 func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
 	if !admin(w, r) {
 		return
 	}
 	var in struct {
-		Interval  int `json:"collector_interval_minutes"`
 		Retention int `json:"audit_retention_days"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Interval < 1 || in.Interval > 10080 || in.Retention < 7 || in.Retention > 3650 {
-		problem(w, 400, "Interval: 1–10080 minutes; retention: 7–3650 days")
+	if in.Retention < 7 || in.Retention > 3650 {
+		problem(w, 400, "Retention must be between 7 and 3650 days")
 		return
 	}
-	_, err := a.DB.Exec(r.Context(), "UPDATE settings SET collector_interval_minutes=$1,audit_retention_days=$2 WHERE workspace_id=$3", in.Interval, in.Retention, current(r).WorkspaceID)
+	_, err := a.DB.Exec(r.Context(), "UPDATE settings SET audit_retention_days=$1 WHERE workspace_id=$2", in.Retention, current(r).WorkspaceID)
 	if err != nil {
 		dbError(w, err)
 		return

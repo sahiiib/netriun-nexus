@@ -25,7 +25,12 @@ Netriun Nexus supports workspace-scoped OpenID Connect (OIDC) and SAML 2.0 ident
 2. Save the provider, then copy the generated **SP metadata URL** into the IdP application.
 3. Configure the IdP to return a persistent NameID, an email attribute, an optional username attribute, and the group attribute.
 4. The default Assertion Consumer Service is `https://nexus.netriun.com/sso/PROVIDER_ID/acs` and uses HTTP-POST.
-5. Enable the provider after the IdP trusts the generated SP certificate and metadata.
+5. Keep IdP-initiated sign-in disabled unless the IdP requires it. When enabled, Nexus still validates the signed assertion, audience, destination, time bounds, and persistent NameID, but request correlation is unavailable by definition.
+6. Enable the provider after the IdP trusts the generated SP certificate and metadata.
+
+## Logout
+
+Nexus always revokes its local session first. For SAML providers that publish an HTTP-Redirect Single Logout endpoint, Nexus then sends a signed logout request and accepts only a signed successful response at `/sso/PROVIDER_ID/slo`. For OIDC providers that publish `end_session_endpoint`, Nexus redirects there with the client ID and post-logout return URI. Providers without a logout endpoint fall back safely to local logout.
 
 ## Map IdP groups to access
 

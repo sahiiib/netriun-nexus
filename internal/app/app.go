@@ -219,6 +219,8 @@ func (a *App) Handler() http.Handler {
 	m.HandleFunc("GET /sso/{provider}/callback", a.oidcCallback)
 	m.HandleFunc("GET /sso/{provider}/metadata", a.samlMetadata)
 	m.HandleFunc("POST /sso/{provider}/acs", a.samlCallback)
+	m.HandleFunc("GET /sso/{provider}/slo", a.samlLogoutCallback)
+	m.HandleFunc("POST /sso/{provider}/slo", a.samlLogoutCallback)
 	routes := map[string]http.HandlerFunc{
 		"GET /api/v1/summary":      a.summary,
 		"GET /api/v1/auth/me":      func(w http.ResponseWriter, r *http.Request) { write(w, 200, current(r)) },
@@ -242,11 +244,12 @@ func (a *App) Handler() http.Handler {
 		"GET /api/v1/users": a.users, "POST /api/v1/users": a.saveUser, "PUT /api/v1/users/{id}": a.saveUser, "DELETE /api/v1/users/{id}": a.deleteUser,
 		"GET /api/v1/memberships": a.memberships, "PUT /api/v1/groups/{id}/members/{userID}": a.saveMembership, "DELETE /api/v1/groups/{id}/members/{userID}": a.deleteMembership,
 		"GET /api/v1/account-access": a.accountAccessPolicy, "PUT /api/v1/account-access": a.saveAccountAccess,
+		"POST /api/v1/access-roles": a.saveAccessRole, "PUT /api/v1/access-roles/{id}": a.saveAccessRole, "DELETE /api/v1/access-roles/{id}": a.deleteAccessRole,
 		"GET /api/v1/identity-providers": a.identityProviders, "POST /api/v1/identity-providers": a.saveIdentityProvider,
 		"PUT /api/v1/identity-providers/{id}": a.saveIdentityProvider, "DELETE /api/v1/identity-providers/{id}": a.deleteIdentityProvider,
 		"GET /api/v1/identity-providers/{id}/group-mappings": a.identityGroupMappings, "PUT /api/v1/identity-providers/{id}/group-mappings": a.identityGroupMappings,
 		"DELETE /api/v1/identity-providers/{id}/group-mappings/{mappingID}": a.deleteIdentityGroupMapping, "PUT /api/v1/sso-settings": a.saveSSOSettings,
-		"GET /api/v1/activity": a.activity, "GET /api/v1/settings": a.settings, "PUT /api/v1/settings": a.saveSettings, "POST /api/v1/collector/run": a.triggerCollector,
+		"GET /api/v1/activity": a.activity, "GET /api/v1/settings": a.settings, "PUT /api/v1/settings": a.saveSettings, "POST /api/v1/inventory/refresh": a.refreshInventory,
 	}
 	for pattern, h := range routes {
 		m.Handle(pattern, a.auth(h))
@@ -275,8 +278,8 @@ func (a *App) Handler() http.Handler {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 		if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
-			samlACS := r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/sso/") && strings.HasSuffix(r.URL.Path, "/acs")
-			if origin := r.Header.Get("Origin"); !samlACS && origin != "" && origin != a.Origin {
+			samlCallback := r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/sso/") && (strings.HasSuffix(r.URL.Path, "/acs") || strings.HasSuffix(r.URL.Path, "/slo"))
+			if origin := r.Header.Get("Origin"); !samlCallback && origin != "" && origin != a.Origin {
 				problem(sw, 403, "Origin not allowed")
 				return
 			}

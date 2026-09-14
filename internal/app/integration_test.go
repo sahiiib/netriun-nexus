@@ -56,6 +56,13 @@ func TestIntegration(t *testing.T) {
 	mailer := &fakeMailer{}
 	a.Mailer = mailer
 	defer a.Close()
+	var snapshotTable, legacyInterval bool
+	if err = a.DB.QueryRow(ctx, "SELECT to_regclass('service_snapshots') IS NOT NULL").Scan(&snapshotTable); err != nil || !snapshotTable {
+		t.Fatal("live inventory snapshot migration was not applied")
+	}
+	if err = a.DB.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='collector_interval_minutes')").Scan(&legacyInterval); err != nil || legacyInterval {
+		t.Fatal("legacy collection interval was not removed")
+	}
 	if _, err = a.DB.Exec(ctx, "TRUNCATE workspaces RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatal(err)
 	}
@@ -228,13 +235,6 @@ func TestIntegration(t *testing.T) {
 	request("GET", fmt.Sprintf("/api/v1/instances?account_id=%d", account2), viewer, nil, 403)
 	request("GET", fmt.Sprintf("/api/v1/summary?account_id=%d", account1), viewer, nil, 200)
 	request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=us-east-1", account1), adminToken, nil, 400)
-	if err = a.Redis.Set(ctx, edsRegionsCacheKey(workspaceID, alibabaAccount), `{"data":[{"id":"ap-southeast-1","name":"Singapore","desktops":0,"available":true},{"id":"cn-hangzhou","name":"China (Hangzhou)","desktops":3,"available":true}],"total_desktops":3}`, time.Minute).Err(); err != nil {
-		t.Fatal(err)
-	}
-	regionIndex := request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/regions", alibabaAccount), adminToken, nil, 200)
-	if !strings.Contains(regionIndex.Body.String(), `"total_desktops":3`) || !strings.Contains(regionIndex.Body.String(), "ap-southeast-1") {
-		t.Fatalf("unexpected cached EDS region index: %s", regionIndex.Body.String())
-	}
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), viewer, map[string]any{}, 403)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"name": "desktop", "confirm_cost": false}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops/ecd-one/policy?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"policy_group_id": ""}, 400)
@@ -247,7 +247,7 @@ func TestIntegration(t *testing.T) {
 	request("POST", fmt.Sprintf("/api/v1/instances/%d/actions", i1), adminToken, map[string]string{"action": "terminate"}, 400)
 	request("GET", "/api/v1/users", viewer, nil, 403)
 	request("GET", "/api/v1/activity", viewer, nil, 403)
-	request("POST", "/api/v1/collector/run", viewer, map[string]any{}, 403)
+	request("POST", fmt.Sprintf("/api/v1/inventory/refresh?account_id=%d", account2), viewer, map[string]any{}, 403)
 	request("PUT", fmt.Sprintf("/api/v1/groups/%d/members/%d", group1, uid), viewer, map[string]string{"role": "manager"}, 403)
 	w = request("GET", "/api/v1/summary", viewer, nil, 200)
 	if !strings.Contains(w.Body.String(), `"instances":1`) {
@@ -258,6 +258,15 @@ func TestIntegration(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"key":"viewer"`) || !strings.Contains(w.Body.String(), `"role_key":"none"`) {
 		t.Fatalf("unexpected access policy response: %s", w.Body.String())
 	}
+	request("POST", "/api/v1/access-roles", viewer, map[string]any{"key": "support", "name": "Support", "permissions": []string{"account.view"}}, 403)
+	createdRole := request("POST", "/api/v1/access-roles", adminToken, map[string]any{"key": "support", "name": "Support", "description": "Read-only support", "permissions": []string{"account.view", "compute.view"}}, 200)
+	var createdRoleBody struct {
+		ID int64 `json:"id"`
+	}
+	if json.Unmarshal(createdRole.Body.Bytes(), &createdRoleBody) != nil || createdRoleBody.ID < 1 {
+		t.Fatalf("custom access policy was not created: %s", createdRole.Body.String())
+	}
+	request("DELETE", fmt.Sprintf("/api/v1/access-roles/%d", createdRoleBody.ID), adminToken, nil, 200)
 	request("PUT", "/api/v1/account-access", adminToken, map[string]any{"principal_type": "user", "principal_id": uid, "cloud_account_id": secondAccount, "role_key": "viewer", "service_key": "*"}, 404)
 	request("PUT", "/api/v1/account-access", adminToken, map[string]any{"principal_type": "user", "principal_id": uid, "cloud_account_id": account2, "role_key": "viewer", "service_key": "*"}, 200)
 	testUser := User{ID: uid, WorkspaceID: workspaceID, Role: "user"}
@@ -355,7 +364,7 @@ func TestIntegration(t *testing.T) {
 	if err != nil || !strings.Contains(plain, "secret-must-not-leak") {
 		t.Fatal("credential preservation failed")
 	}
-	r := httptest.NewRequest("POST", "/api/v1/collector/run", strings.NewReader("{}"))
+	r := httptest.NewRequest("POST", "/api/v1/inventory/refresh", strings.NewReader("{}"))
 	r.Header.Set("Origin", "https://attacker.invalid")
 	r.Header.Set("Authorization", "Bearer "+adminToken)
 	w = httptest.NewRecorder()
@@ -373,11 +382,8 @@ func TestIntegration(t *testing.T) {
 	}
 	request("PUT", fmt.Sprintf("/api/v1/users/%d", uid), adminToken, map[string]string{"username": "viewer", "email": "viewer@example.com", "password": "Changed-password1!", "role": "user"}, 200)
 	request("GET", "/api/v1/auth/me", viewer, nil, 401)
-	request("PUT", "/api/v1/settings", adminToken, map[string]int{"collector_interval_minutes": 0, "audit_retention_days": 90}, 400)
-	request("POST", "/api/v1/collector/run", adminToken, map[string]any{}, 202)
-	if n, _ := a.Redis.Exists(ctx, collectorKey("requested", workspaceID)).Result(); n != 1 {
-		t.Fatal("collection not queued")
-	}
+	request("PUT", "/api/v1/settings", adminToken, map[string]int{"audit_retention_days": 6}, 400)
+	request("PUT", "/api/v1/settings", adminToken, map[string]int{"audit_retention_days": 90}, 200)
 	// AWS mutations fail closed when their mandatory intent audit cannot be stored.
 	if _, err = a.DB.Exec(ctx, "ALTER TABLE audit_log RENAME TO audit_log_unavailable"); err != nil {
 		t.Fatal(err)
@@ -403,8 +409,8 @@ func TestIntegration(t *testing.T) {
 	request("POST", "/api/v1/users", adminToken, map[string]string{"username": "member-over-limit", "email": "member-over-limit@example.com", "password": "Member-password1!", "role": "user"}, 409)
 	// An existing collector lease prevents an overlapping run, with no AWS call.
 	a.Redis.Set(ctx, collectorKey("lock", workspaceID), "other-worker", time.Minute)
-	if err = a.Collect(ctx, workspaceID); err != nil {
-		t.Fatal(err)
+	if err = a.Collect(ctx, workspaceID); err == nil {
+		t.Fatal("overlapping collection was not rejected")
 	}
 	if value, _ := a.Redis.Get(ctx, collectorKey("lock", workspaceID)).Result(); value != "other-worker" {
 		t.Fatal("another worker's lock changed")

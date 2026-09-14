@@ -16,7 +16,16 @@ const (
 	CapabilityComputeView   Capability = "compute.view"
 	CapabilityComputeAction Capability = "compute.operate"
 	CapabilityAccountManage Capability = "account.manage"
+	CapabilityEDSView       Capability = "eds.view"
+	CapabilityEDSOperate    Capability = "eds.operate"
+	CapabilityEDSManage     Capability = "eds.manage"
 )
+
+var supportedCapabilities = []Capability{
+	CapabilityAccountView, CapabilityAccountManage,
+	CapabilityComputeView, CapabilityComputeAction,
+	CapabilityEDSView, CapabilityEDSOperate, CapabilityEDSManage,
+}
 
 type PolicyEngine struct {
 	DB *pgxpool.Pool
@@ -38,7 +47,7 @@ WHERE a.workspace_id=$1 AND (
     (aa.principal_type='user' AND aa.user_id=$3)
     OR (aa.principal_type='team' AND ug.user_id IS NOT NULL AND
      CASE ug.role WHEN 'manager' THEN 3 WHEN 'operator' THEN 2 ELSE 1 END >=
-     CASE $4 WHEN 'account.manage' THEN 3 WHEN 'compute.operate' THEN 2 ELSE 1 END)
+     CASE $4 WHEN 'account.manage' THEN 3 WHEN 'eds.manage' THEN 3 WHEN 'compute.operate' THEN 2 WHEN 'eds.operate' THEN 2 ELSE 1 END)
    )
  )
  OR (
@@ -119,7 +128,7 @@ SELECT EXISTS(
      (aa.principal_type='user' AND aa.user_id=$4)
      OR (aa.principal_type='team' AND ug.user_id IS NOT NULL AND
       CASE ug.role WHEN 'manager' THEN 3 WHEN 'operator' THEN 2 ELSE 1 END >=
-      CASE $5 WHEN 'account.manage' THEN 3 WHEN 'compute.operate' THEN 2 ELSE 1 END)
+      CASE $5 WHEN 'account.manage' THEN 3 WHEN 'eds.manage' THEN 3 WHEN 'compute.operate' THEN 2 WHEN 'eds.operate' THEN 2 ELSE 1 END)
     )
   )
   OR (
