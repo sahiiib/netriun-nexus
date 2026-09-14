@@ -253,6 +253,37 @@ func TestIntegration(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"instances":1`) {
 		t.Fatal(w.Body.String())
 	}
+	var viewerRoleID, operatorRoleID int64
+	if err = a.DB.QueryRow(ctx, "SELECT id FROM access_roles WHERE workspace_id=$1 AND key='viewer'", workspaceID).Scan(&viewerRoleID); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.DB.QueryRow(ctx, "SELECT id FROM access_roles WHERE workspace_id=$1 AND key='operator'", workspaceID).Scan(&operatorRoleID); err != nil {
+		t.Fatal(err)
+	}
+	var assignmentID int64
+	if err = a.DB.QueryRow(ctx, `INSERT INTO account_access_assignments(workspace_id,principal_type,user_id,cloud_account_id,role_id,created_by) VALUES($1,'user',$2,$3,$4,$5) RETURNING id`, workspaceID, uid, account2, viewerRoleID, 1).Scan(&assignmentID); err != nil {
+		t.Fatal(err)
+	}
+	testUser := User{ID: uid, WorkspaceID: workspaceID, Role: "user"}
+	if !a.Policy.CanAccount(ctx, testUser, account2, CapabilityAccountView) || a.Policy.CanAccount(ctx, testUser, account2, CapabilityComputeAction) {
+		t.Fatal("viewer assignment did not enforce account-scoped access")
+	}
+	w = request("GET", "/api/v1/accounts", viewer, nil, 200)
+	if !strings.Contains(w.Body.String(), "Account B") {
+		t.Fatal("direct account assignment was not reflected in account listing")
+	}
+	if _, err = a.DB.Exec(ctx, "UPDATE account_access_assignments SET role_id=$1,updated_at=now() WHERE id=$2", operatorRoleID, assignmentID); err != nil {
+		t.Fatal(err)
+	}
+	if !a.Policy.CanAccount(ctx, testUser, account2, CapabilityComputeAction) || a.Policy.CanAccount(ctx, testUser, account2, CapabilityAccountManage) {
+		t.Fatal("operator assignment granted the wrong account permissions")
+	}
+	if _, err = a.DB.Exec(ctx, "DELETE FROM account_access_assignments WHERE id=$1", assignmentID); err != nil {
+		t.Fatal(err)
+	}
+	if a.Policy.CanAccount(ctx, testUser, account2, CapabilityAccountView) {
+		t.Fatal("removed account assignment still grants access")
+	}
 	request("PUT", fmt.Sprintf("/api/v1/groups/%d/members/%d", group1, uid), adminToken, map[string]string{"role": "manager"}, 200)
 	// A group manager may not move credentials to a group they do not manage.
 	request("PUT", fmt.Sprintf("/api/v1/accounts/%d", account1), viewer, map[string]any{"name": "Moved", "group_id": group2, "regions": []string{}}, 403)

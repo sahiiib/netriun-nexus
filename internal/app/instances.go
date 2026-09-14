@@ -18,7 +18,12 @@ func (a *App) instances(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT i.*,a.name AS account_name,a.provider,a.group_id FROM instances i JOIN cloud_accounts a ON a.id=i.account_id WHERE `+scopeSQL+` AND ($4=0 OR a.id=$4) AND ($5='' OR i.name ILIKE '%'||$5||'%' OR i.instance_id ILIKE '%'||$5||'%' OR i.public_ip ILIKE '%'||$5||'%' OR a.name ILIKE '%'||$5||'%') AND ($6='' OR i.state=$6) AND ($7='' OR i.region=$7) ORDER BY i.name,i.id LIMIT $8 OFFSET $9) t`, u.Role == "admin", u.ID, u.WorkspaceID, accountID, r.URL.Query().Get("q"), r.URL.Query().Get("state"), r.URL.Query().Get("region"), limit, offset)
+	ids, err := a.Policy.AccessibleAccountIDs(r.Context(), u, CapabilityAccountView)
+	if err != nil {
+		dbError(w, err)
+		return
+	}
+	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT i.*,a.name AS account_name,a.provider,a.group_id FROM instances i JOIN cloud_accounts a ON a.id=i.account_id WHERE a.workspace_id=$1 AND a.id=ANY($2) AND ($3=0 OR a.id=$3) AND ($4='' OR i.name ILIKE '%'||$4||'%' OR i.instance_id ILIKE '%'||$4||'%' OR i.public_ip ILIKE '%'||$4||'%' OR a.name ILIKE '%'||$4||'%') AND ($5='' OR i.state=$5) AND ($6='' OR i.region=$6) ORDER BY i.name,i.id LIMIT $7 OFFSET $8) t`, u.WorkspaceID, ids, accountID, r.URL.Query().Get("q"), r.URL.Query().Get("state"), r.URL.Query().Get("region"), limit, offset)
 }
 func (a *App) instanceTarget(r *http.Request, id int64, mode string) (int64, string, string, string, error) {
 	var accountID int64

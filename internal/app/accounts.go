@@ -38,7 +38,18 @@ var (
 
 func (a *App) accounts(w http.ResponseWriter, r *http.Request) {
 	u := current(r)
-	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT a.id,a.name,a.provider,a.owner,a.group_id,g.name AS group_name,a.regions,ARRAY(SELECT DISTINCT i.region FROM instances i WHERE i.account_id=a.id ORDER BY i.region) AS discovered_regions,a.last_sync_at,a.sync_error,a.sync_error_code,a.created_at,(SELECT count(*) FROM instances i WHERE i.account_id=a.id) AS instance_count FROM cloud_accounts a LEFT JOIN access_groups g ON g.id=a.group_id WHERE `+scopeSQL+` OR (a.workspace_id=$3 AND EXISTS(SELECT 1 FROM user_groups ug JOIN access_groups mg ON mg.id=ug.group_id WHERE ug.user_id=$2 AND ug.group_id=a.group_id AND ug.role='manager' AND mg.manage_cloud_accounts)) ORDER BY a.name) t`, u.Role == "admin", u.ID, u.WorkspaceID)
+	viewIDs, err := a.Policy.AccessibleAccountIDs(r.Context(), u, CapabilityAccountView)
+	if err != nil {
+		dbError(w, err)
+		return
+	}
+	manageIDs, err := a.Policy.AccessibleAccountIDs(r.Context(), u, CapabilityAccountManage)
+	if err != nil {
+		dbError(w, err)
+		return
+	}
+	ids := mergeAccountIDs(viewIDs, manageIDs)
+	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT a.id,a.name,a.provider,a.owner,a.group_id,g.name AS group_name,a.regions,ARRAY(SELECT DISTINCT i.region FROM instances i WHERE i.account_id=a.id ORDER BY i.region) AS discovered_regions,a.last_sync_at,a.sync_error,a.sync_error_code,a.created_at,(SELECT count(*) FROM instances i WHERE i.account_id=a.id) AS instance_count FROM cloud_accounts a LEFT JOIN access_groups g ON g.id=a.group_id WHERE a.workspace_id=$1 AND a.id=ANY($2) ORDER BY a.name) t`, u.WorkspaceID, ids)
 }
 func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 	var in accountInput

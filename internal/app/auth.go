@@ -339,39 +339,3 @@ func (a *App) optionalAccountID(w http.ResponseWriter, r *http.Request) (int64, 
 	}
 	return id, true
 }
-
-// The same tenant and account scope is applied to inventory and direct resource access.
-const scopeSQL = `(a.workspace_id=$3 AND ($1::boolean OR EXISTS(SELECT 1 FROM user_groups ug JOIN access_groups g ON g.id=ug.group_id WHERE ug.user_id=$2 AND ug.group_id=a.group_id AND g.view_dashboard)))`
-
-func (a *App) accountAccess(r *http.Request, id int64, mode string) bool {
-	u := current(r)
-	if u.Role == "admin" {
-		var allowed bool
-		return a.DB.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM cloud_accounts WHERE id=$1 AND workspace_id=$2)", id, u.WorkspaceID).Scan(&allowed) == nil && allowed
-	}
-	var allowed bool
-	query := `SELECT EXISTS(SELECT 1 FROM cloud_accounts a JOIN user_groups ug ON ug.group_id=a.group_id JOIN access_groups g ON g.id=ug.group_id WHERE a.id=$1 AND a.workspace_id=$3 AND ug.user_id=$2 AND `
-	switch mode {
-	case "manage":
-		query += `g.manage_cloud_accounts AND ug.role='manager'`
-	case "operate":
-		query += `g.view_dashboard AND ug.role IN ('operator','manager')`
-	default:
-		query += `g.view_dashboard`
-	}
-	query += `)`
-	return a.DB.QueryRow(r.Context(), query, id, u.ID, u.WorkspaceID).Scan(&allowed) == nil && allowed
-}
-func (a *App) groupAccess(r *http.Request, id int64, mode string) bool {
-	u := current(r)
-	if u.Role == "admin" {
-		var allowed bool
-		return a.DB.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM access_groups WHERE id=$1 AND workspace_id=$2)", id, u.WorkspaceID).Scan(&allowed) == nil && allowed
-	}
-	column := "manage_cloud_accounts"
-	if mode == "members" {
-		column = "manage_group_members"
-	}
-	var allowed bool
-	return a.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM user_groups ug JOIN access_groups g ON g.id=ug.group_id WHERE ug.user_id=$1 AND g.id=$2 AND g.workspace_id=$3 AND ug.role='manager' AND g.`+column+`)`, u.ID, id, u.WorkspaceID).Scan(&allowed) == nil && allowed
-}

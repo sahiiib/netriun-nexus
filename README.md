@@ -37,7 +37,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - Scheduled collection across explicitly selected or all enabled regions.
 - Paginated provider collection and transactional reconciliation per successful region; failed regions retain their previous inventory.
 - Start, stop and reboot; live security group, volume and network interface details.
-- Workspace-scoped users, access policies and viewer/operator/manager memberships.
+- Workspace-scoped users and a central policy engine with account-scoped Viewer, Operator, and Account Manager assignments.
 - Redis sessions, logout/revocation, login rate limiting and renewable collector leases.
 - AES-256-GCM encryption for cloud credentials, bcrypt passwords and same-origin mutation checks.
 - Audit history, retention settings, structured application logs and container log rotation.

@@ -33,6 +33,7 @@ type App struct {
 	Origin         string
 	TrustedProxies []*net.IPNet
 	Mailer         mailSender
+	Policy         *PolicyEngine
 }
 type User struct {
 	ID            int64  `json:"id"`
@@ -80,6 +81,7 @@ func New(ctx context.Context) (*App, error) {
 		return fail(err)
 	}
 	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer}
+	a.Policy = &PolicyEngine{DB: db}
 	if err = a.migrate(ctx); err != nil {
 		a.Close()
 		return nil, err

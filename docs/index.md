@@ -26,7 +26,8 @@ This is the canonical information architecture for product documentation. Keep t
 ## 4. Access Management
 
 - Workspace roles
-- Access policies and group memberships
+- Access policies and group memberships — see [approved access policy architecture](access-policy-architecture.md)
+- Account-scoped roles and future SSO group mappings
 - Audit log
 
 ## 5. Operations
