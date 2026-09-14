@@ -49,7 +49,7 @@ func (a *App) accounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ids := mergeAccountIDs(viewIDs, manageIDs)
-	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT a.id,a.name,a.provider,a.owner,a.group_id,g.name AS group_name,a.regions,ARRAY(SELECT DISTINCT i.region FROM instances i WHERE i.account_id=a.id ORDER BY i.region) AS discovered_regions,a.last_sync_at,a.sync_error,a.sync_error_code,a.created_at,(SELECT count(*) FROM instances i WHERE i.account_id=a.id) AS instance_count FROM cloud_accounts a LEFT JOIN access_groups g ON g.id=a.group_id WHERE a.workspace_id=$1 AND a.id=ANY($2) ORDER BY a.name) t`, u.WorkspaceID, ids)
+	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT a.id,a.name,a.provider,a.owner,a.group_id,g.name AS group_name,a.regions,ARRAY(SELECT DISTINCT i.region FROM instances i WHERE i.account_id=a.id ORDER BY i.region) AS discovered_regions,a.last_sync_at,a.sync_error,a.sync_error_code,a.created_at,(SELECT count(*) FROM instances i WHERE i.account_id=a.id) AS instance_count,a.id=ANY($3) AS can_manage FROM cloud_accounts a LEFT JOIN access_groups g ON g.id=a.group_id WHERE a.workspace_id=$1 AND a.id=ANY($2) ORDER BY a.name) t`, u.WorkspaceID, ids, manageIDs)
 }
 func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 	var in accountInput
@@ -76,6 +76,7 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 	var ok bool
 	var cipher string
 	var existingProvider string
+	var existingGroupID *int64
 	var verifiedCredentials Credentials
 	if r.Method == "PUT" {
 		id, ok = pathID(w, r, "id")
@@ -86,7 +87,7 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 			problem(w, 403, "Account management access required")
 			return
 		}
-		if err := a.DB.QueryRow(r.Context(), "SELECT credentials,provider FROM cloud_accounts WHERE id=$1 AND workspace_id=$2", id, current(r).WorkspaceID).Scan(&cipher, &existingProvider); err != nil {
+		if err := a.DB.QueryRow(r.Context(), "SELECT credentials,provider,group_id FROM cloud_accounts WHERE id=$1 AND workspace_id=$2", id, current(r).WorkspaceID).Scan(&cipher, &existingProvider, &existingGroupID); err != nil {
 			dbError(w, err)
 			return
 		}
@@ -97,9 +98,12 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 			in.Provider = "aws"
 		}
 	}
-	if current(r).Role != "admin" && (in.GroupID == nil || !a.groupAccess(r, *in.GroupID, "accounts")) {
-		problem(w, 403, "Permission required for destination group")
-		return
+	if current(r).Role != "admin" {
+		groupChanged := r.Method == "POST" || !optionalIDsEqual(existingGroupID, in.GroupID)
+		if groupChanged && (in.GroupID == nil || !a.groupAccess(r, *in.GroupID, "accounts")) {
+			problem(w, 403, "Permission required for destination group")
+			return
+		}
 	}
 	if in.Credentials != nil {
 		if err := validateCredentials(in.Provider, in.Credentials); err != "" {
@@ -150,6 +154,10 @@ func (a *App) saveAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	a.audit(r, "account.saved", strconv.FormatInt(id, 10), map[string]string{"name": in.Name, "provider": in.Provider})
 	write(w, 200, map[string]any{"id": id})
+}
+
+func optionalIDsEqual(a, b *int64) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
 func validateCredentials(provider string, c *Credentials) string {

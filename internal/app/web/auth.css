@@ -78,6 +78,20 @@
 .account-error p { margin-bottom: 5px; }
 .account-error code { color: #ffd27a; font-size: 10px; }
 
+.access-matrix-wrap { overflow: auto; border-top: 1px solid var(--line); }
+.access-matrix { min-width: 720px; }
+.access-matrix th:not(:first-child), .access-matrix td:not(:first-child) { min-width: 150px; text-align: center; }
+.access-matrix th small { display: block; margin-top: 5px; color: var(--muted); font-size: 8px; }
+.access-matrix td > small { white-space: normal; }
+.assignment-target { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 18px 0; }
+.assignment-target span { padding: 13px; border: 1px solid var(--line); border-radius: 6px; }
+.assignment-target small { display: block; margin-bottom: 6px; color: var(--muted); font-size: 9px; letter-spacing: 1px; }
+.assignment-target strong { font-size: 12px; }
+.role-guide { display: grid; gap: 1px; margin-top: 15px; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; }
+.role-guide div { padding: 10px 12px; background: rgba(255,255,255,.025); }
+.role-guide strong { display: block; color: #e6f0f9; font-size: 11px; }
+.role-guide small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+
 html[data-theme="light"] .docs-nav { background: rgba(255,255,255,.88); }
 html[data-theme="light"] .docs-nav button { color: #52677b; }
 html[data-theme="light"] .docs-nav button:hover { background: #edf4f8; color: #193047; }
@@ -86,6 +100,7 @@ html[data-theme="light"] .doc-article li, html[data-theme="light"] .provider-cho
 html[data-theme="light"] .doc-note, html[data-theme="light"] .connection-success { background: #e9f8f4; color: #087c69; }
 html[data-theme="light"] .provider-choice { background: #f8fbfd; }
 html[data-theme="light"] .provider-choice:has(input:checked) { background: #e9f8f4; }
+html[data-theme="light"] .role-guide strong { color: #193047; }
 
 @media (max-width: 750px) {
   .docs-layout { grid-template-columns: 1fr; }
@@ -94,4 +109,5 @@ html[data-theme="light"] .provider-choice:has(input:checked) { background: #e9f8
   .provider-grid { grid-template-columns: 1fr; }
   .wizard-progress span { font-size: 0; }
   .wizard-progress b { font-size: 10px; }
+  .assignment-target { grid-template-columns: 1fr; }
 }

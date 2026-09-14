@@ -236,6 +236,7 @@ func (a *App) Handler() http.Handler {
 		"GET /api/v1/groups": a.groups, "POST /api/v1/groups": a.saveGroup, "PUT /api/v1/groups/{id}": a.saveGroup, "DELETE /api/v1/groups/{id}": a.deleteGroup,
 		"GET /api/v1/users": a.users, "POST /api/v1/users": a.saveUser, "PUT /api/v1/users/{id}": a.saveUser, "DELETE /api/v1/users/{id}": a.deleteUser,
 		"GET /api/v1/memberships": a.memberships, "PUT /api/v1/groups/{id}/members/{userID}": a.saveMembership, "DELETE /api/v1/groups/{id}/members/{userID}": a.deleteMembership,
+		"GET /api/v1/account-access": a.accountAccessPolicy, "PUT /api/v1/account-access": a.saveAccountAccess,
 		"GET /api/v1/activity": a.activity, "GET /api/v1/settings": a.settings, "PUT /api/v1/settings": a.saveSettings, "POST /api/v1/collector/run": a.triggerCollector,
 	}
 	for pattern, h := range routes {

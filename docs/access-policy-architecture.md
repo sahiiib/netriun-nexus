@@ -26,7 +26,7 @@ Direct user assignments and team assignments are both supported. For a team assi
 
 ## Migration behavior
 
-The `account_access_assignments` table is introduced without changing current users' access. For an account with no new assignments, the legacy `cloud_accounts.group_id`, access-group flags, and `user_groups.role` remain authoritative. As soon as an account receives an explicit assignment, the new policy model becomes authoritative for that account.
+The `account_access_assignments` table is introduced without changing current users' access. For an account with no new assignments, the legacy `cloud_accounts.group_id`, access-group flags, and `user_groups.role` remain authoritative. When the first explicit assignment is saved, Nexus first converts the account's effective legacy access into assignments and then makes the new policy model authoritative. Adding one grant must not silently revoke access from existing peers.
 
 This account-by-account fallback must remain until the Access Policy UI can migrate and verify all existing assignments.
 

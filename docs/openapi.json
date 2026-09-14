@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Netriun Nexus API",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "Multi-tenant workspace API with verified-email authentication. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. Account creation and credential replacement require a successful connection test by the same user during the previous ten minutes; PUT account requests may omit credentials to preserve them."
   },
   "servers": [
@@ -1272,6 +1272,36 @@
         }
       }
     },
+    "/account-access": {
+      "get": {
+        "summary": "List account roles, explicit assignments, and effective user access (admin)",
+        "responses": {
+          "200": { "description": "Roles, assignments, and effective user-by-account access matrix" },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Workspace administrator required" },
+          "503": { "description": "Dependency unavailable" }
+        }
+      },
+      "put": {
+        "summary": "Create, replace, or remove a manual account access assignment (admin)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AccountAccessAssignment" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Assignment saved or removed" },
+          "400": { "description": "Invalid principal, role, or scope" },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Workspace administrator required" },
+          "404": { "description": "Principal or account not found in this workspace" },
+          "409": { "description": "Assignment conflict" }
+        }
+      }
+    },
     "/groups/{id}/members/{userID}": {
       "put": {
         "summary": "Assign or update membership",
@@ -1730,6 +1760,18 @@
         "required": [
           "role"
         ]
+      },
+      "AccountAccessAssignment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "principal_type": { "type": "string", "enum": ["user", "team"] },
+          "principal_id": { "type": "integer", "minimum": 1 },
+          "cloud_account_id": { "type": "integer", "minimum": 1 },
+          "role_key": { "type": "string", "description": "Role key, or none to remove the manual assignment" },
+          "service_key": { "type": "string", "enum": ["*"] }
+        },
+        "required": ["principal_type", "principal_id", "cloud_account_id", "role_key"]
       },
       "Action": {
         "type": "object",
