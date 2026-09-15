@@ -14,16 +14,16 @@ import (
 func (a *App) instances(w http.ResponseWriter, r *http.Request) {
 	u := current(r)
 	limit, offset := pagination(r)
-	accountID, ok := a.optionalAccountID(w, r)
-	if !ok {
-		return
-	}
 	ids, err := a.Policy.AccessibleAccountIDs(r.Context(), u, CapabilityAccountView)
 	if err != nil {
 		dbError(w, err)
 		return
 	}
-	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT i.*,a.name AS account_name,a.provider,a.group_id FROM instances i JOIN cloud_accounts a ON a.id=i.account_id WHERE a.workspace_id=$1 AND a.id=ANY($2) AND ($3=0 OR a.id=$3) AND ($4='' OR i.name ILIKE '%'||$4||'%' OR i.instance_id ILIKE '%'||$4||'%' OR i.public_ip ILIKE '%'||$4||'%' OR a.name ILIKE '%'||$4||'%') AND ($5='' OR i.state=$5) AND ($6='' OR i.region=$6) ORDER BY i.name,i.id LIMIT $7 OFFSET $8) t`, u.WorkspaceID, ids, accountID, r.URL.Query().Get("q"), r.URL.Query().Get("state"), r.URL.Query().Get("region"), limit, offset)
+	ids, ok := a.requestedAccountIDs(w, r, ids)
+	if !ok {
+		return
+	}
+	a.list(w, r, `SELECT row_to_json(t) FROM (SELECT i.*,a.name AS account_name,a.provider,a.group_id FROM instances i JOIN cloud_accounts a ON a.id=i.account_id WHERE a.workspace_id=$1 AND a.id=ANY($2) AND ($3='' OR i.name ILIKE '%'||$3||'%' OR i.instance_id ILIKE '%'||$3||'%' OR i.public_ip ILIKE '%'||$3||'%' OR a.name ILIKE '%'||$3||'%') AND ($4='' OR i.state=$4) AND ($5='' OR i.region=$5) ORDER BY i.name,i.id LIMIT $6 OFFSET $7) t`, u.WorkspaceID, ids, r.URL.Query().Get("q"), r.URL.Query().Get("state"), r.URL.Query().Get("region"), limit, offset)
 }
 func (a *App) instanceTarget(r *http.Request, id int64, mode string) (int64, string, string, string, error) {
 	var accountID int64

@@ -1,12 +1,13 @@
 # Netriun Nexus documentation map
 
-This is the canonical information architecture for product documentation. Keep these six top-level sections stable as the portal and supported services grow. New articles belong under the closest existing section; add a new top-level section only when the content cannot fit this model.
+This is the canonical information architecture for product documentation. Keep these six user-guide sections stable as the portal and supported services grow; the API reference remains an adjacent technical reference. New articles belong under the closest existing section; add a new user-guide section only when the content cannot fit this model.
 
 ## 1. Getting Started
 
 - Start with Netriun Nexus
 - Workspace registration and email verification
 - Team members and the Community workspace limit
+- Portal navigation: choose one active cloud provider, then select one or more accounts from that provider
 
 ## 2. Cloud Connections
 
@@ -19,6 +20,7 @@ This is the canonical information architecture for product documentation. Keep t
 ## 3. Services
 
 - Multi-cloud compute inventory
+- Provider-aware service navigation grouped by capability such as computing, networking, and data storage
 - Alibaba WUYING EDS desktops
 - Alibaba WUYING EDS users
 - Future provider services such as object storage, databases, networking, and managed desktops
@@ -42,7 +44,10 @@ This is the canonical information architecture for product documentation. Keep t
 - Connection error codes and remediation
 - Live refresh and snapshot failures
 - Email verification problems
-- API reference — see [OpenAPI specification](openapi.json)
+
+## API reference
+
+The API reference is part of Documentation in the portal. See the complete [OpenAPI specification](openapi.json). Inventory endpoints accept a comma-separated `account_ids` query parameter; all selected accounts must be accessible and belong to the same cloud provider.
 
 ## Content source
 

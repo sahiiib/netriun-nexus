@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -348,19 +349,44 @@ func pathID(w http.ResponseWriter, r *http.Request, key string) (int64, bool) {
 	return id, true
 }
 
-func (a *App) optionalAccountID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	value := r.URL.Query().Get("account_id")
-	if value == "" {
-		return 0, true
+func (a *App) requestedAccountIDs(w http.ResponseWriter, r *http.Request, allowed []int64) ([]int64, bool) {
+	raw := strings.TrimSpace(r.URL.Query().Get("account_ids"))
+	if raw == "" {
+		raw = strings.TrimSpace(r.URL.Query().Get("account_id"))
 	}
-	id, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || id < 1 {
-		problem(w, 400, "Invalid cloud account ID")
-		return 0, false
+	if raw == "" {
+		return allowed, true
 	}
-	if !a.accountAccess(r, id, "view") {
-		problem(w, 403, "Cloud account access required")
-		return 0, false
+	parts := strings.Split(raw, ",")
+	if len(parts) > 100 {
+		problem(w, 400, "Select no more than 100 cloud accounts")
+		return nil, false
 	}
-	return id, true
+	selected := make([]int64, 0, len(parts))
+	seen := map[int64]bool{}
+	for _, part := range parts {
+		id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
+		if err != nil || id < 1 {
+			problem(w, 400, "Invalid cloud account selection")
+			return nil, false
+		}
+		if !slices.Contains(allowed, id) {
+			problem(w, 403, "Cloud account access required")
+			return nil, false
+		}
+		if !seen[id] {
+			selected = append(selected, id)
+			seen[id] = true
+		}
+	}
+	var providerCount int
+	if err := a.DB.QueryRow(r.Context(), "SELECT count(DISTINCT provider) FROM cloud_accounts WHERE workspace_id=$1 AND id=ANY($2)", current(r).WorkspaceID, selected).Scan(&providerCount); err != nil {
+		dbError(w, err)
+		return nil, false
+	}
+	if providerCount != 1 {
+		problem(w, 400, "Selected cloud accounts must belong to the same provider")
+		return nil, false
+	}
+	return selected, true
 }

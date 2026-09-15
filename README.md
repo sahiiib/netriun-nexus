@@ -15,6 +15,8 @@ Open http://localhost:8080. Sign in as `admin` with `ADMIN_PASSWORD` from `.env`
 
 The application initializes the schema and bootstrap administrator on first startup. Subsequent boots do not reset passwords. Connect a cloud account in **Cloud connections**; opening a service page fetches live provider data and atomically updates its database snapshot.
 
+The sidebar keeps cloud scope explicit: select one active provider, then select one or more accounts from that provider. Cloud services are loaded for the active provider and grouped by capability. Workspace administration and product documentation—including the API reference—have separate navigation sections. Multi-account inventory API calls use a comma-separated `account_ids` query value; selected IDs must be accessible and belong to the same provider.
+
 ```sh
 docker compose logs -f app
 docker compose down

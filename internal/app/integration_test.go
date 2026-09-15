@@ -234,6 +234,15 @@ func TestIntegration(t *testing.T) {
 	}
 	request("GET", fmt.Sprintf("/api/v1/instances?account_id=%d", account2), viewer, nil, 403)
 	request("GET", fmt.Sprintf("/api/v1/summary?account_id=%d", account1), viewer, nil, 200)
+	w = request("GET", fmt.Sprintf("/api/v1/instances?account_ids=%d,%d", account1, account2), adminToken, nil, 200)
+	json.Unmarshal(w.Body.Bytes(), &list)
+	if len(list.Data) != 2 {
+		t.Fatalf("expected two instances across selected AWS accounts, got %d", len(list.Data))
+	}
+	request("GET", fmt.Sprintf("/api/v1/summary?account_ids=%d,%d", account1, account2), adminToken, nil, 200)
+	request("GET", fmt.Sprintf("/api/v1/instances?account_ids=%d,%d", account1, account2), viewer, nil, 403)
+	request("GET", fmt.Sprintf("/api/v1/instances?account_ids=%d,%d", account1, alibabaAccount), adminToken, nil, 400)
+	request("POST", fmt.Sprintf("/api/v1/inventory/refresh?account_ids=%d,%d", account1, alibabaAccount), adminToken, map[string]any{}, 400)
 	request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=us-east-1", account1), adminToken, nil, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), viewer, map[string]any{}, 403)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"name": "desktop", "confirm_cost": false}, 400)
@@ -426,8 +435,14 @@ func TestIntegration(t *testing.T) {
 	request("GET", "/readyz", "", nil, 200)
 	request("GET", "/", "", nil, 200)
 	webAsset := request("GET", "/app.js", "", nil, 200)
-	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") {
+	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") {
 		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
+	}
+	indexAsset := request("GET", "/", "", nil, 200)
+	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.15"} {
+		if !strings.Contains(indexAsset.Body.String(), marker) {
+			t.Fatalf("sidebar marker %q is missing", marker)
+		}
 	}
 	// Rate limiting is atomic and independent of email.
 	for i := 0; i < 21; i++ {

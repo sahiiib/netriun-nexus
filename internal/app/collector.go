@@ -153,20 +153,9 @@ func (a *App) refreshInventory(w http.ResponseWriter, r *http.Request) {
 		dbError(w, err)
 		return
 	}
-	requested, ok := a.optionalAccountID(w, r)
+	ids, ok := a.requestedAccountIDs(w, r, allowed)
 	if !ok {
 		return
-	}
-	ids := allowed
-	if requested > 0 {
-		ids = nil
-		if slices.Contains(allowed, requested) {
-			ids = []int64{requested}
-		}
-		if len(ids) == 0 {
-			problem(w, 403, "Cloud account access required")
-			return
-		}
 	}
 	if len(ids) == 0 {
 		write(w, 200, map[string]any{"status": "current", "accounts": 0})
