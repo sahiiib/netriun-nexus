@@ -5,8 +5,8 @@ PostgreSQL and Redis services. For the current local cluster,
 `values-local.yaml` also deploys single-replica PostgreSQL and Redis StatefulSets
 with retained host-path volumes on `k8s-node01`.
 
-Redis also stores short-lived asynchronous inventory-refresh job state and
-per-account collector leases. Keep Redis available during application rollouts;
+Redis also stores short-lived asynchronous compute/EDS refresh-job state and
+per-account/service collector leases. Keep Redis available during application rollouts;
 the latest inventory snapshot remains in PostgreSQL if an in-flight job is lost.
 
 Create the application Secret before installation. Do not commit literal

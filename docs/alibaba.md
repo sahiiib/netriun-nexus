@@ -23,7 +23,7 @@ Netriun Nexus inventories Alibaba Cloud ECS instances and can submit start, stop
 2. Select **Alibaba Cloud**.
 3. Enter the AccessKey ID and AccessKey secret.
 4. Enter comma-separated region IDs such as `cn-hangzhou, ap-southeast-1`, or leave the field blank to discover all ECS regions available to the credential.
-5. Save the connection and open the compute or EDS page. Nexus fetches live data and stores the successful response as the latest database snapshot. Connection or permission failures appear without deleting the last healthy snapshot.
+5. Save the connection and open the compute or EDS page. Nexus displays the latest database snapshot immediately, queues a live refresh in the background, and updates the page when it finishes. Connection or permission failures appear without deleting the last healthy snapshot.
 6. Select the Alibaba connection from **Active cloud account** in the sidebar. ECS, EDS desktops, and EDS users then become available for that account.
 
 Desktop creation and renewal may incur charges. Netriun Nexus requires an explicit confirmation for both operations. `AutoPay` is off unless selected; an EDS renewal with AutoPay off may create an unpaid order. Subscription renewal only applies to prepaid desktops, and user entitlement changes require the desktop to be running.

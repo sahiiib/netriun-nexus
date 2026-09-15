@@ -1111,12 +1111,12 @@
     },
     "/accounts/{id}/eds/desktops": {
       "get": {
-        "summary": "List live WUYING EDS desktops for an Alibaba account",
+        "summary": "Read the latest WUYING EDS desktop snapshot for an Alibaba account",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
           { "name": "region", "in": "query", "required": true, "description": "Alibaba EDS region ID, or `all` to aggregate desktops across supported regions.", "schema": { "type": "string", "minLength": 2 } }
         ],
-        "responses": { "200": { "description": "Desktop list" }, "400": { "description": "Invalid provider or region" }, "403": { "description": "Access denied" }, "502": { "description": "Alibaba EDS rejected the request" } }
+        "responses": { "200": { "description": "Desktop snapshot; snapshot=false when no successful refresh exists yet" }, "400": { "description": "Invalid provider or region" }, "403": { "description": "Access denied" } }
       },
       "post": {
         "summary": "Create one to ten EDS desktops (account manager; may incur charges)",
@@ -1130,11 +1130,11 @@
     },
     "/accounts/{id}/eds/regions": {
       "get": {
-        "summary": "List supported WUYING EDS regions with availability, per-region counts, and the total available desktop count",
+        "summary": "Read the latest WUYING EDS region and desktop-count snapshot",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
         ],
-        "responses": { "200": { "description": "Region list with desktop counts; unavailable counts are -1" }, "400": { "description": "Invalid provider" }, "403": { "description": "Access denied" }, "502": { "description": "Alibaba EDS rejected the request" } }
+        "responses": { "200": { "description": "Region snapshot with desktop counts; unavailable counts are -1" }, "400": { "description": "Invalid provider" }, "403": { "description": "Access denied" } }
       }
     },
     "/accounts/{id}/eds/catalog": {
@@ -1245,12 +1245,12 @@
     },
     "/accounts/{id}/eds/users": {
       "get": {
-        "summary": "List live WUYING convenience accounts",
+        "summary": "Read the latest WUYING convenience-account snapshot",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
           { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "EDS user list" }, "400": { "description": "Invalid provider or region" }, "403": { "description": "Access denied" }, "502": { "description": "Alibaba EDS rejected the request" } }
+        "responses": { "200": { "description": "EDS user snapshot; snapshot=false when no successful refresh exists yet" }, "400": { "description": "Invalid provider or region" }, "403": { "description": "Access denied" } }
       },
       "post": {
         "summary": "Create a WUYING convenience account (account manager)",
@@ -1260,6 +1260,36 @@
         ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSUserCreate" } } } },
         "responses": { "202": { "description": "User creation accepted" }, "400": { "description": "Invalid request" }, "403": { "description": "Account management access required" }, "502": { "description": "Alibaba EDS rejected the request" } }
+      }
+    },
+    "/accounts/{id}/eds/refresh": {
+      "post": {
+        "summary": "Queue an asynchronous EDS page refresh while the current snapshots remain readable",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "service", "in": "query", "required": true, "schema": { "type": "string", "enum": ["desktops", "users"] } },
+          { "name": "region", "in": "query", "required": true, "description": "A directory/desktop region; desktops also accepts `all`", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "202": { "description": "Refresh queued, or an equivalent in-flight refresh was reused", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSRefreshJob" } } } },
+          "400": { "description": "Invalid provider, service, or region" },
+          "403": { "description": "Cloud account access required" },
+          "503": { "description": "Refresh queue unavailable" }
+        }
+      }
+    },
+    "/accounts/{id}/eds/refresh/{jobID}": {
+      "get": {
+        "summary": "Read asynchronous EDS refresh status",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "jobID", "in": "path", "required": true, "schema": { "type": "string", "minLength": 20, "maxLength": 100 } }
+        ],
+        "responses": {
+          "200": { "description": "Current EDS job status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EDSRefreshJob" } } } },
+          "403": { "description": "Cloud account access required" },
+          "404": { "description": "Job not found or expired" }
+        }
       }
     },
     "/memberships": {
@@ -1711,6 +1741,22 @@
           "error": { "type": "string" }
         },
         "required": ["account_ids", "status", "failed_accounts"]
+      },
+      "EDSRefreshJob": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "account_id": { "type": "integer", "minimum": 1 },
+          "service": { "type": "string", "enum": ["desktops", "users"] },
+          "region": { "type": "string" },
+          "status": { "type": "string", "enum": ["queued", "running", "completed", "failed"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "started_at": { "type": "string", "format": "date-time" },
+          "completed_at": { "type": "string", "format": "date-time" },
+          "duration_ms": { "type": "integer", "minimum": 0 },
+          "error": { "type": "string" }
+        },
+        "required": ["account_id", "service", "region", "status"]
       },
       "Login": {
         "type": "object",

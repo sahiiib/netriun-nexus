@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -61,26 +60,16 @@ func edsProviderError(w http.ResponseWriter, operation string, accountID int64, 
 }
 
 func (a *App) edsDesktops(w http.ResponseWriter, r *http.Request) {
-	if strings.TrimSpace(r.URL.Query().Get("region")) == "all" {
-		a.edsDesktopsAllRegions(w, r)
-		return
-	}
-	accountID, region, clients, ok := a.edsAccount(w, r, "view")
+	accountID, region, ok := a.edsSnapshotAccount(w, r, true, true)
 	if !ok {
 		return
 	}
-	ctx, cancel := edsContext(r)
-	defer cancel()
-	items, err := cloud.EDSDesktops(ctx, clients.Desktop, region)
+	payload, _, err := a.serviceSnapshot(r.Context(), current(r).WorkspaceID, accountID, "eds.desktops", region)
 	if err != nil {
-		edsProviderError(w, "describe_desktops", accountID, region, err)
-		return
-	}
-	if err = a.saveServiceSnapshot(r.Context(), current(r).WorkspaceID, accountID, "eds.desktops", region, map[string]any{"data": items}); err != nil {
 		dbError(w, err)
 		return
 	}
-	write(w, 200, map[string]any{"data": items})
+	write(w, 200, payload)
 }
 
 func (a *App) edsDesktopsAllRegions(w http.ResponseWriter, r *http.Request) {
@@ -167,92 +156,12 @@ func (a *App) edsDesktopsAllRegions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) edsRegions(w http.ResponseWriter, r *http.Request) {
-	accountID, ok := pathID(w, r, "id")
+	accountID, _, ok := a.edsSnapshotAccount(w, r, false, false)
 	if !ok {
 		return
 	}
-	if !a.accountAccess(r, accountID, "view") {
-		problem(w, 403, "Cloud account access required")
-		return
-	}
-	u := current(r)
-	type regionCount struct {
-		ID        string `json:"id"`
-		Name      string `json:"name"`
-		Desktops  int    `json:"desktops"`
-		Available bool   `json:"available"`
-	}
-	type regionResponse struct {
-		Data          []regionCount `json:"data"`
-		TotalDesktops int           `json:"total_desktops"`
-	}
-	cacheKey := edsRegionsCacheKey(u.WorkspaceID, accountID)
-	credentials, err := a.credentials(r.Context(), u.WorkspaceID, accountID, "alibaba")
+	payload, _, err := a.serviceSnapshot(r.Context(), current(r).WorkspaceID, accountID, "eds.regions", "")
 	if err != nil {
-		problem(w, 400, "The selected account is not an Alibaba Cloud connection")
-		return
-	}
-	var seedRegion string
-	err = a.DB.QueryRow(r.Context(), `SELECT COALESCE((SELECT min(region) FROM instances WHERE account_id=$1), NULLIF(regions[1],''), 'cn-hangzhou') FROM cloud_accounts WHERE id=$1 AND workspace_id=$2`, accountID, u.WorkspaceID).Scan(&seedRegion)
-	if err != nil {
-		dbError(w, err)
-		return
-	}
-	seed, err := cloud.EDSClient(seedRegion, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken)
-	if err != nil {
-		edsProviderError(w, "describe_regions", accountID, seedRegion, err)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 55*time.Second)
-	defer cancel()
-	regions, err := cloud.EDSRegions(ctx, seed.Desktop)
-	if err != nil {
-		edsProviderError(w, "describe_regions", accountID, seedRegion, err)
-		return
-	}
-	counts := make([]regionCount, len(regions))
-	var wg sync.WaitGroup
-	limit := make(chan struct{}, 6)
-	for i, region := range regions {
-		counts[i] = regionCount{ID: region.ID, Name: region.Name, Desktops: -1}
-		i, region := i, region
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			select {
-			case limit <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
-			defer func() { <-limit }()
-			item := counts[i]
-			client, clientErr := cloud.EDSClient(region.ID, credentials.AccessKey, credentials.SecretKey, credentials.SessionToken)
-			if clientErr == nil {
-				count, listErr := cloud.EDSDesktopCount(ctx, client.Desktop, region.ID)
-				if listErr == nil {
-					item.Desktops, item.Available = count, true
-				} else {
-					slog.Warn("Alibaba EDS region count failed", "account_id", accountID, "region", region.ID, "error", listErr)
-				}
-			}
-			counts[i] = item
-		}()
-	}
-	wg.Wait()
-	total := 0
-	for _, item := range counts {
-		if item.Available && item.Desktops > 0 {
-			total += item.Desktops
-		}
-	}
-	sort.Slice(counts, func(i, j int) bool { return counts[i].ID < counts[j].ID })
-	payload := regionResponse{Data: counts, TotalDesktops: total}
-	if raw, marshalErr := json.Marshal(payload); marshalErr == nil {
-		if cacheErr := a.Redis.Set(r.Context(), cacheKey, raw, 5*time.Minute).Err(); cacheErr != nil {
-			slog.Warn("Alibaba EDS region cache write failed", "account_id", accountID, "error", cacheErr)
-		}
-	}
-	if err = a.saveServiceSnapshot(r.Context(), u.WorkspaceID, accountID, "eds.regions", "", payload); err != nil {
 		dbError(w, err)
 		return
 	}
@@ -281,22 +190,16 @@ func (a *App) edsCatalog(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) edsUsers(w http.ResponseWriter, r *http.Request) {
-	accountID, region, clients, ok := a.edsAccount(w, r, "view")
+	accountID, region, ok := a.edsSnapshotAccount(w, r, false, true)
 	if !ok {
 		return
 	}
-	ctx, cancel := edsContext(r)
-	defer cancel()
-	items, err := cloud.EDSUsers(ctx, clients.User)
+	payload, _, err := a.serviceSnapshot(r.Context(), current(r).WorkspaceID, accountID, "eds.users", region)
 	if err != nil {
-		edsProviderError(w, "describe_users", accountID, region, err)
-		return
-	}
-	if err = a.saveServiceSnapshot(r.Context(), current(r).WorkspaceID, accountID, "eds.users", region, map[string]any{"data": items}); err != nil {
 		dbError(w, err)
 		return
 	}
-	write(w, 200, map[string]any{"data": items})
+	write(w, 200, payload)
 }
 
 func (a *App) createEDSDesktop(w http.ResponseWriter, r *http.Request) {

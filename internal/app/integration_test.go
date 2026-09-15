@@ -306,6 +306,74 @@ func TestIntegration(t *testing.T) {
 	}
 	a.refreshRunner = a.collectAccounts
 	request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=us-east-1", account1), adminToken, nil, 400)
+	emptyEDS := request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), adminToken, nil, 200)
+	if !strings.Contains(emptyEDS.Body.String(), `"snapshot":false`) {
+		t.Fatalf("missing EDS snapshot did not return immediately: %s", emptyEDS.Body.String())
+	}
+	if err = a.saveServiceSnapshot(ctx, workspaceID, alibabaAccount, "eds.regions", "", map[string]any{"data": []map[string]any{{"id": "cn-hangzhou", "name": "Hangzhou", "desktops": 1, "available": true}}, "total_desktops": 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.saveServiceSnapshot(ctx, workspaceID, alibabaAccount, "eds.desktops", "all", map[string]any{"data": []map[string]any{{"DesktopId": "ecd-test", "RegionId": "cn-hangzhou"}}, "failed_regions": []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.saveServiceSnapshot(ctx, workspaceID, alibabaAccount, "eds.users", "cn-hangzhou", map[string]any{"data": []map[string]any{{"EndUserId": "test_user"}}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		fmt.Sprintf("/api/v1/accounts/%d/eds/regions", alibabaAccount),
+		fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=all", alibabaAccount),
+		fmt.Sprintf("/api/v1/accounts/%d/eds/users?region=cn-hangzhou", alibabaAccount),
+	} {
+		snapshot := request("GET", path, adminToken, nil, 200)
+		if !strings.Contains(snapshot.Body.String(), `"snapshot":true`) || !strings.Contains(snapshot.Body.String(), `"fetched_at"`) {
+			t.Fatalf("EDS snapshot metadata missing for %s: %s", path, snapshot.Body.String())
+		}
+	}
+	edsStarted, releaseEDS := make(chan struct{}), make(chan struct{})
+	a.edsRefreshRunner = func(runCtx context.Context, gotWorkspace, gotAccount int64, service, targetRegion string) error {
+		if gotWorkspace != workspaceID || gotAccount != alibabaAccount || service != "users" || targetRegion != "cn-hangzhou" {
+			t.Errorf("unexpected EDS refresh scope: workspace=%d account=%d service=%s region=%s", gotWorkspace, gotAccount, service, targetRegion)
+		}
+		close(edsStarted)
+		select {
+		case <-releaseEDS:
+			return nil
+		case <-runCtx.Done():
+			return runCtx.Err()
+		}
+	}
+	queuedEDS := request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/refresh?service=users&region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{}, http.StatusAccepted)
+	var edsJob edsRefreshJob
+	if json.Unmarshal(queuedEDS.Body.Bytes(), &edsJob) != nil || edsJob.ID == "" || edsJob.Status != "queued" {
+		t.Fatalf("EDS refresh was not queued: %s", queuedEDS.Body.String())
+	}
+	select {
+	case <-edsStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("asynchronous EDS refresh did not start")
+	}
+	coalescedEDS := request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/refresh?service=users&region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{}, http.StatusAccepted)
+	var sameEDSJob edsRefreshJob
+	if json.Unmarshal(coalescedEDS.Body.Bytes(), &sameEDSJob) != nil || sameEDSJob.ID != edsJob.ID {
+		t.Fatalf("duplicate EDS refresh was not coalesced: %s", coalescedEDS.Body.String())
+	}
+	close(releaseEDS)
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		statusResponse := request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/refresh/%s", alibabaAccount, edsJob.ID), adminToken, nil, 200)
+		if json.Unmarshal(statusResponse.Body.Bytes(), &edsJob) != nil {
+			t.Fatal("invalid EDS job response")
+		}
+		if edsJob.Status == "completed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("EDS refresh did not complete: %s", statusResponse.Body.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	a.edsRefreshRunner = a.refreshEDSService
+	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/refresh?service=users&region=all", alibabaAccount), adminToken, map[string]any{}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), viewer, map[string]any{}, 403)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"name": "desktop", "confirm_cost": false}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops/ecd-one/policy?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"policy_group_id": ""}, 400)
@@ -506,7 +574,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
 	}
 	indexAsset := request("GET", "/", "", nil, 200)
-	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.16"} {
+	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.17"} {
 		if !strings.Contains(indexAsset.Body.String(), marker) {
 			t.Fatalf("sidebar marker %q is missing", marker)
 		}
