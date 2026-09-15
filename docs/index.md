@@ -35,7 +35,7 @@ This is the canonical information architecture for product documentation. Keep t
 ## 5. Operations
 
 - Resource lifecycle actions
-- Live page refresh, database snapshots, and retention
+- Snapshot-first pages, asynchronous live-refresh jobs, database snapshots, and retention
 - Local, Docker, and Kubernetes operation
 - Legacy migration — see [migration guide](migration.md)
 

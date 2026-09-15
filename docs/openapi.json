@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Netriun Nexus API",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "description": "Multi-tenant workspace API with live provider refresh, database snapshots, custom account access policies, local verified-email authentication, and workspace-scoped OIDC/SAML SSO. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. The workspace owner retains local break-glass access when SSO is required."
   },
   "servers": [
@@ -1599,19 +1599,25 @@
     },
     "/inventory/refresh": {
       "post": {
-        "summary": "Fetch accessible compute inventory live and atomically update database snapshots",
+        "summary": "Queue an asynchronous live compute refresh while the current snapshot remains readable",
         "parameters": [
           { "name": "account_ids", "in": "query", "required": false, "description": "Comma-separated accessible account IDs from one cloud provider", "schema": { "type": "string", "pattern": "^[1-9][0-9]*(,[1-9][0-9]*)*$" } },
           { "name": "account_id", "in": "query", "required": false, "deprecated": true, "description": "Backward-compatible single-account filter; use account_ids", "schema": { "type": "integer", "minimum": 1 } }
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "No accessible accounts required refreshing",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object"
-                }
+                "schema": { "$ref": "#/components/schemas/InventoryRefreshJob" }
+              }
+            }
+          },
+          "202": {
+            "description": "Refresh queued, or an equivalent in-flight refresh was reused",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InventoryRefreshJob" }
               }
             }
           },
@@ -1633,6 +1639,28 @@
           "503": {
             "description": "Dependency unavailable"
           }
+        }
+      }
+    },
+    "/inventory/refresh/{jobID}": {
+      "get": {
+        "summary": "Read asynchronous inventory refresh status",
+        "parameters": [
+          { "name": "jobID", "in": "path", "required": true, "schema": { "type": "string", "minLength": 20, "maxLength": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current job status",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InventoryRefreshJob" }
+              }
+            }
+          },
+          "400": { "description": "Invalid job ID" },
+          "401": { "description": "Authentication required" },
+          "403": { "description": "Access to one or more selected accounts was removed" },
+          "404": { "description": "Job not found or expired" }
         }
       }
     }
@@ -1658,6 +1686,32 @@
       }
     },
     "schemas": {
+      "InventoryRefreshJob": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "account_ids": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+          "status": { "type": "string", "enum": ["current", "queued", "running", "completed", "partial", "failed"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "started_at": { "type": "string", "format": "date-time" },
+          "completed_at": { "type": "string", "format": "date-time" },
+          "duration_ms": { "type": "integer", "minimum": 0 },
+          "failed_accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer", "minimum": 1 },
+                "message": { "type": "string" },
+                "code": { "type": "string" }
+              },
+              "required": ["id", "message", "code"]
+            }
+          },
+          "error": { "type": "string" }
+        },
+        "required": ["account_ids", "status", "failed_accounts"]
+      },
       "Login": {
         "type": "object",
         "additionalProperties": false,

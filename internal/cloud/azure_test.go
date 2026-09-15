@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestAzureInventoryDetailsAndActions(t *testing.T) {
@@ -50,6 +52,37 @@ func TestAzureInventoryDetailsAndActions(t *testing.T) {
 	}
 	if len(actions) != 3 {
 		t.Fatalf("actions=%v", actions)
+	}
+}
+
+func TestAzureInventoryFetchesInstanceViewsConcurrently(t *testing.T) {
+	var entered atomic.Int32
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/virtualMachines") {
+			fmt.Fprint(w, `{"value":[{"id":"/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/one","name":"one","location":"eastus","properties":{"hardwareProfile":{"vmSize":"small"}}},{"id":"/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/two","name":"two","location":"westus","properties":{"hardwareProfile":{"vmSize":"small"}}}]}`)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/instanceView") {
+			if entered.Add(1) == 2 {
+				close(release)
+			}
+			select {
+			case <-release:
+				fmt.Fprint(w, `{"statuses":[{"code":"PowerState/running"}]}`)
+			case <-time.After(time.Second):
+				http.Error(w, "instance views were fetched serially", http.StatusGatewayTimeout)
+			}
+			return
+		}
+		http.Error(w, "unexpected request", http.StatusBadRequest)
+	}))
+	defer server.Close()
+	client := &AzureClient{subscriptionID: "sub", accessToken: "test-token", baseURL: server.URL, httpClient: server.Client()}
+	items, err := AzureInventory(context.Background(), client)
+	if err != nil || len(items) != 2 || entered.Load() != 2 {
+		t.Fatalf("parallel instance views: items=%d entered=%d err=%v", len(items), entered.Load(), err)
 	}
 }
 

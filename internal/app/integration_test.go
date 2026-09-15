@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/netriun/nexus/internal/cloud"
 )
 
 type fakeMailer struct {
@@ -201,6 +204,20 @@ func TestIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	batchItems := []cloud.Instance{
+		{ID: fmt.Sprint("i-", account1), Name: "Batch updated", Region: "us-east-1", State: "running", Type: "t3.micro", Details: map[string]any{"batch": true}},
+		{ID: "i-batch-second", Name: "Batch second", Region: "us-east-1", State: "stopped", Type: "t3.nano", Details: map[string]any{"batch": true}},
+	}
+	if err = a.reconcileInventory(ctx, account1, batchItems, false, "us-east-1"); err != nil {
+		t.Fatalf("batch inventory reconciliation failed: %v", err)
+	}
+	var batchCount int
+	if err = a.DB.QueryRow(ctx, "SELECT count(*) FROM instances WHERE account_id=$1 AND details->>'batch'='true'", account1).Scan(&batchCount); err != nil || batchCount != 2 {
+		t.Fatalf("batch inventory rows were not persisted: count=%d err=%v", batchCount, err)
+	}
+	if _, err = a.DB.Exec(ctx, "DELETE FROM instances WHERE account_id=$1 AND instance_id='i-batch-second'", account1); err != nil {
+		t.Fatal(err)
+	}
 	var secondInstance int64
 	if err = a.DB.QueryRow(ctx, "INSERT INTO instances(account_id,instance_id,region,state,instance_type) VALUES($1,'i-tenant-two','us-east-1','running','t3.nano') RETURNING id", secondAccount).Scan(&secondInstance); err != nil {
 		t.Fatal(err)
@@ -243,6 +260,51 @@ func TestIntegration(t *testing.T) {
 	request("GET", fmt.Sprintf("/api/v1/instances?account_ids=%d,%d", account1, account2), viewer, nil, 403)
 	request("GET", fmt.Sprintf("/api/v1/instances?account_ids=%d,%d", account1, alibabaAccount), adminToken, nil, 400)
 	request("POST", fmt.Sprintf("/api/v1/inventory/refresh?account_ids=%d,%d", account1, alibabaAccount), adminToken, map[string]any{}, 400)
+	refreshStarted, releaseRefresh := make(chan struct{}), make(chan struct{})
+	a.refreshRunner = func(runCtx context.Context, gotWorkspace int64, gotIDs []int64) error {
+		if gotWorkspace != workspaceID || len(gotIDs) != 2 || gotIDs[0] != account1 || gotIDs[1] != account2 {
+			t.Errorf("unexpected asynchronous refresh scope: workspace=%d accounts=%v", gotWorkspace, gotIDs)
+		}
+		close(refreshStarted)
+		select {
+		case <-releaseRefresh:
+			return nil
+		case <-runCtx.Done():
+			return runCtx.Err()
+		}
+	}
+	queued := request("POST", fmt.Sprintf("/api/v1/inventory/refresh?account_ids=%d,%d", account1, account2), adminToken, map[string]any{}, http.StatusAccepted)
+	var refreshJob inventoryRefreshJob
+	if err = json.Unmarshal(queued.Body.Bytes(), &refreshJob); err != nil || refreshJob.ID == "" || refreshJob.Status != "queued" {
+		t.Fatalf("refresh was not queued: %s", queued.Body.String())
+	}
+	select {
+	case <-refreshStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("asynchronous refresh did not start")
+	}
+	coalesced := request("POST", fmt.Sprintf("/api/v1/inventory/refresh?account_ids=%d,%d", account1, account2), adminToken, map[string]any{}, http.StatusAccepted)
+	var coalescedJob inventoryRefreshJob
+	if json.Unmarshal(coalesced.Body.Bytes(), &coalescedJob) != nil || coalescedJob.ID != refreshJob.ID {
+		t.Fatalf("duplicate refresh was not coalesced: %s", coalesced.Body.String())
+	}
+	request("GET", "/api/v1/inventory/refresh/"+refreshJob.ID, viewer, nil, 403)
+	close(releaseRefresh)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		statusResponse := request("GET", "/api/v1/inventory/refresh/"+refreshJob.ID, adminToken, nil, 200)
+		if err = json.Unmarshal(statusResponse.Body.Bytes(), &refreshJob); err != nil {
+			t.Fatal(err)
+		}
+		if refreshJob.Status == "completed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("refresh job did not complete: %s", statusResponse.Body.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	a.refreshRunner = a.collectAccounts
 	request("GET", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=us-east-1", account1), adminToken, nil, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), viewer, map[string]any{}, 403)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"name": "desktop", "confirm_cost": false}, 400)
@@ -416,15 +478,20 @@ func TestIntegration(t *testing.T) {
 		request("POST", "/api/v1/users", adminToken, map[string]string{"username": fmt.Sprintf("member-%d", i), "email": fmt.Sprintf("member-%d@example.com", i), "password": "Member-password1!", "role": "user"}, 200)
 	}
 	request("POST", "/api/v1/users", adminToken, map[string]string{"username": "member-over-limit", "email": "member-over-limit@example.com", "password": "Member-password1!", "role": "user"}, 409)
-	// An existing collector lease prevents an overlapping run, with no AWS call.
-	a.Redis.Set(ctx, collectorKey("lock", workspaceID), "other-worker", time.Minute)
-	if err = a.Collect(ctx, workspaceID); err == nil {
-		t.Fatal("overlapping collection was not rejected")
+	// A per-account lease coalesces overlapping provider calls without changing another worker's lock.
+	accountLockKey := fmt.Sprintf("collector:lock:%d:compute:%d", workspaceID, account1)
+	a.Redis.Set(ctx, accountLockKey, "other-worker", time.Minute)
+	lockCtx, cancelLock := context.WithTimeout(ctx, 25*time.Millisecond)
+	called := false
+	err = a.withAccountCollectorLock(lockCtx, workspaceID, account1, func(context.Context) error { called = true; return nil })
+	cancelLock()
+	if !errors.Is(err, context.DeadlineExceeded) || called {
+		t.Fatalf("overlapping account collection was not coalesced: called=%v err=%v", called, err)
 	}
-	if value, _ := a.Redis.Get(ctx, collectorKey("lock", workspaceID)).Result(); value != "other-worker" {
+	if value, _ := a.Redis.Get(ctx, accountLockKey).Result(); value != "other-worker" {
 		t.Fatal("another worker's lock changed")
 	}
-	a.Redis.Del(ctx, collectorKey("lock", workspaceID))
+	a.Redis.Del(ctx, accountLockKey)
 	request("DELETE", fmt.Sprintf("/api/v1/accounts/%d", account1), adminToken, nil, 200)
 	request("DELETE", fmt.Sprintf("/api/v1/accounts/%d", account2), adminToken, nil, 200)
 	if err = a.Collect(ctx, workspaceID); err != nil {
@@ -435,11 +502,11 @@ func TestIntegration(t *testing.T) {
 	request("GET", "/readyz", "", nil, 200)
 	request("GET", "/", "", nil, 200)
 	webAsset := request("GET", "/app.js", "", nil, 200)
-	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") {
+	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Refresh queued") {
 		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
 	}
 	indexAsset := request("GET", "/", "", nil, 200)
-	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.15"} {
+	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.16"} {
 		if !strings.Contains(indexAsset.Body.String(), marker) {
 			t.Fatalf("sidebar marker %q is missing", marker)
 		}

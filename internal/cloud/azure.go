@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 const azureComputeAPIVersion = "2024-07-01"
@@ -125,22 +127,37 @@ func AzureInventory(ctx context.Context, c *AzureClient) ([]Instance, error) {
 		if err := c.request(ctx, http.MethodGet, target, &page); err != nil {
 			return nil, err
 		}
-		for _, vm := range page.Value {
+		pageResults := make([]*Instance, len(page.Value))
+		group, groupCtx := errgroup.WithContext(ctx)
+		group.SetLimit(8)
+		for index, vm := range page.Value {
 			if vm.ID == "" || vm.Name == "" || vm.Location == "" {
 				continue
 			}
-			var view azureInstanceView
-			if err := c.request(ctx, http.MethodGet, vm.ID+"/instanceView?api-version="+azureComputeAPIVersion, &view); err != nil {
-				return nil, fmt.Errorf("instance view for %s: %w", vm.Name, err)
-			}
-			networkInterfaces := make([]string, 0, len(vm.Properties.NetworkProfile.NetworkInterfaces))
-			for _, nic := range vm.Properties.NetworkProfile.NetworkInterfaces {
-				networkInterfaces = append(networkInterfaces, nic.ID)
-			}
-			result = append(result, Instance{
-				ID: vm.ID, Name: vm.Name, State: azurePowerState(view.Statuses), Type: vm.Properties.HardwareProfile.VMSize, Region: strings.ToLower(vm.Location),
-				Details: map[string]any{"provider": "azure", "tags": vm.Tags, "zones": vm.Zones, "resource_group": azureResourceGroup(vm.ID), "network_interface_ids": networkInterfaces, "provisioning_state": vm.Properties.ProvisioningState, "computer_name": view.ComputerName, "os_name": view.OSName, "os_version": view.OSVersion},
+			index, vm := index, vm
+			group.Go(func() error {
+				var view azureInstanceView
+				if err := c.request(groupCtx, http.MethodGet, vm.ID+"/instanceView?api-version="+azureComputeAPIVersion, &view); err != nil {
+					return fmt.Errorf("instance view for %s: %w", vm.Name, err)
+				}
+				networkInterfaces := make([]string, 0, len(vm.Properties.NetworkProfile.NetworkInterfaces))
+				for _, nic := range vm.Properties.NetworkProfile.NetworkInterfaces {
+					networkInterfaces = append(networkInterfaces, nic.ID)
+				}
+				pageResults[index] = &Instance{
+					ID: vm.ID, Name: vm.Name, State: azurePowerState(view.Statuses), Type: vm.Properties.HardwareProfile.VMSize, Region: strings.ToLower(vm.Location),
+					Details: map[string]any{"provider": "azure", "tags": vm.Tags, "zones": vm.Zones, "resource_group": azureResourceGroup(vm.ID), "network_interface_ids": networkInterfaces, "provisioning_state": vm.Properties.ProvisioningState, "computer_name": view.ComputerName, "os_name": view.OSName, "os_version": view.OSVersion},
+				}
+				return nil
 			})
+		}
+		if err := group.Wait(); err != nil {
+			return nil, err
+		}
+		for _, item := range pageResults {
+			if item != nil {
+				result = append(result, *item)
+			}
 		}
 		target = page.NextLink
 	}

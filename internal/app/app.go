@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -34,6 +35,12 @@ type App struct {
 	TrustedProxies []*net.IPNet
 	Mailer         mailSender
 	Policy         *PolicyEngine
+	backgroundCtx  context.Context
+	backgroundStop context.CancelFunc
+	backgroundWG   sync.WaitGroup
+	refreshRunner  func(context.Context, int64, []int64) error
+	accountSlots   chan struct{}
+	regionSlots    chan struct{}
 }
 type User struct {
 	ID            int64  `json:"id"`
@@ -80,8 +87,10 @@ func New(ctx context.Context) (*App, error) {
 	if err != nil {
 		return fail(err)
 	}
-	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer}
+	backgroundCtx, backgroundStop := context.WithCancel(context.Background())
+	a := &App{DB: db, Redis: rc, Vault: v, SecureCookies: cfg.secureCookies, Origin: cfg.origin, TrustedProxies: cfg.trustedProxies, Mailer: mailer, backgroundCtx: backgroundCtx, backgroundStop: backgroundStop, accountSlots: make(chan struct{}, 4), regionSlots: make(chan struct{}, 6)}
 	a.Policy = &PolicyEngine{DB: db}
+	a.refreshRunner = a.collectAccounts
 	if err = a.migrate(ctx); err != nil {
 		a.Close()
 		return nil, err
@@ -92,7 +101,14 @@ func New(ctx context.Context) (*App, error) {
 	}
 	return a, nil
 }
-func (a *App) Close() { a.DB.Close(); a.Redis.Close() }
+func (a *App) Close() {
+	if a.backgroundStop != nil {
+		a.backgroundStop()
+		a.backgroundWG.Wait()
+	}
+	a.DB.Close()
+	a.Redis.Close()
+}
 func (a *App) bootstrap(ctx context.Context) error {
 	name, pass := strings.TrimSpace(os.Getenv("ADMIN_USERNAME")), os.Getenv("ADMIN_PASSWORD")
 	email, emailErr := normalizeEmail(os.Getenv("ADMIN_EMAIL"))
@@ -249,7 +265,8 @@ func (a *App) Handler() http.Handler {
 		"PUT /api/v1/identity-providers/{id}": a.saveIdentityProvider, "DELETE /api/v1/identity-providers/{id}": a.deleteIdentityProvider,
 		"GET /api/v1/identity-providers/{id}/group-mappings": a.identityGroupMappings, "PUT /api/v1/identity-providers/{id}/group-mappings": a.identityGroupMappings,
 		"DELETE /api/v1/identity-providers/{id}/group-mappings/{mappingID}": a.deleteIdentityGroupMapping, "PUT /api/v1/sso-settings": a.saveSSOSettings,
-		"GET /api/v1/activity": a.activity, "GET /api/v1/settings": a.settings, "PUT /api/v1/settings": a.saveSettings, "POST /api/v1/inventory/refresh": a.refreshInventory,
+		"GET /api/v1/activity": a.activity, "GET /api/v1/settings": a.settings, "PUT /api/v1/settings": a.saveSettings,
+		"POST /api/v1/inventory/refresh": a.refreshInventory, "GET /api/v1/inventory/refresh/{jobID}": a.inventoryRefreshStatus,
 	}
 	for pattern, h := range routes {
 		m.Handle(pattern, a.auth(h))
