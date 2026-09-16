@@ -8,6 +8,7 @@ require (
 	github.com/alibabacloud-go/ecs-20140526/v7 v7.11.1
 	github.com/alibabacloud-go/eds-user-20210308/v2 v2.2.2
 	github.com/alibabacloud-go/tea v1.5.2
+	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.5.3
 	github.com/aws/aws-sdk-go-v2 v1.46.0
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.3
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.329.0
@@ -17,6 +18,7 @@ require (
 	github.com/redis/go-redis/v9 v9.22.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/oauth2 v0.37.0
+	golang.org/x/sync v0.22.0
 )
 
 require (
@@ -47,8 +49,8 @@ require (
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/time v0.4.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )

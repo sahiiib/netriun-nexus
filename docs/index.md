@@ -23,6 +23,7 @@ This is the canonical information architecture for product documentation. Keep t
 - Provider-aware service navigation grouped by capability such as computing, networking, and data storage
 - Alibaba WUYING EDS desktops
 - Alibaba WUYING EDS users
+- Alibaba OSS buckets
 - Future provider services such as object storage, databases, networking, and managed desktops
 
 ## 4. Access Management

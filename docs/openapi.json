@@ -84,7 +84,7 @@
             "description": "Workspace created; email verification is required before sign-in"
           },
           "400": {
-            "description": "Invalid request"
+            "description": "Invalid request; the response includes `field` for workspace, username, email, or password validation failures"
           },
           "409": {
             "description": "Email or username already in use"
@@ -1292,6 +1292,54 @@
         }
       }
     },
+    "/accounts/{id}/oss/buckets": {
+      "get": {
+        "summary": "Read the latest Alibaba OSS bucket snapshot",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }],
+        "responses": {
+          "200": { "description": "Bucket metadata and usage snapshot; snapshot=false before the first successful refresh" },
+          "400": { "description": "The account is not an Alibaba connection" },
+          "403": { "description": "Cloud account access required" }
+        }
+      },
+      "post": {
+        "summary": "Create a private Alibaba OSS bucket (account manager; may incur charges)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OSSBucketCreate" } } } },
+        "responses": {
+          "202": { "description": "Private bucket created" },
+          "400": { "description": "Invalid input or missing cost confirmation" },
+          "403": { "description": "Account management access required" },
+          "502": { "description": "Alibaba OSS rejected bucket creation" }
+        }
+      }
+    },
+    "/accounts/{id}/oss/refresh": {
+      "post": {
+        "summary": "Queue an asynchronous OSS bucket refresh while the current snapshot remains readable",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }],
+        "responses": {
+          "202": { "description": "Refresh queued, or an equivalent in-flight refresh was reused", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OSSRefreshJob" } } } },
+          "400": { "description": "The account is not an Alibaba connection" },
+          "403": { "description": "Cloud account access required" },
+          "503": { "description": "Refresh queue unavailable" }
+        }
+      }
+    },
+    "/accounts/{id}/oss/refresh/{jobID}": {
+      "get": {
+        "summary": "Read asynchronous OSS refresh status",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "jobID", "in": "path", "required": true, "schema": { "type": "string", "minLength": 20, "maxLength": 100 } }
+        ],
+        "responses": {
+          "200": { "description": "Current OSS job status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OSSRefreshJob" } } } },
+          "403": { "description": "Cloud account access required" },
+          "404": { "description": "Job not found or expired" }
+        }
+      }
+    },
     "/memberships": {
       "get": {
         "summary": "List visible memberships",
@@ -1758,6 +1806,20 @@
         },
         "required": ["account_id", "service", "region", "status"]
       },
+      "OSSRefreshJob": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "account_id": { "type": "integer", "minimum": 1 },
+          "status": { "type": "string", "enum": ["queued", "running", "completed", "failed"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "started_at": { "type": "string", "format": "date-time" },
+          "completed_at": { "type": "string", "format": "date-time" },
+          "duration_ms": { "type": "integer", "minimum": 0 },
+          "error": { "type": "string" }
+        },
+        "required": ["account_id", "status"]
+      },
       "Login": {
         "type": "object",
         "additionalProperties": false,
@@ -2033,6 +2095,18 @@
         "required": [
           "action"
         ]
+      },
+      "OSSBucketCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$" },
+          "region": { "type": "string" },
+          "storage_class": { "type": "string", "enum": ["Standard", "IA", "Archive", "ColdArchive"] },
+          "redundancy_type": { "type": "string", "enum": ["LRS", "ZRS"] },
+          "confirm_cost": { "type": "boolean", "enum": [true] }
+        },
+        "required": ["name", "region", "storage_class", "redundancy_type", "confirm_cost"]
       },
       "EDSDesktopCreate": {
         "type": "object",

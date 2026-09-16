@@ -188,10 +188,16 @@ func TestIntegration(t *testing.T) {
 		}
 		request("DELETE", fmt.Sprintf("/api/v1/accounts/%d", providerAccount.id), adminToken, nil, 200)
 	}
+	invalidSignup := request("POST", "/api/v1/auth/signup", "", map[string]string{"workspace": "X", "username": "second-owner", "email": "second-owner@example.com", "password": "Second-owner-password1!"}, http.StatusBadRequest)
+	if !strings.Contains(invalidSignup.Body.String(), `"field":"workspace"`) {
+		t.Fatalf("sign-up validation is not field-specific: %s", invalidSignup.Body.String())
+	}
 	request("POST", "/api/v1/auth/signup", "", map[string]string{"workspace": "Independent Lab", "username": "second-owner", "email": "second-owner@example.com", "password": "Second-owner-password1!"}, http.StatusAccepted)
 	request("POST", "/api/v1/auth/login", "", map[string]string{"email": "second-owner@example.com", "password": "Second-owner-password1!"}, 403)
 	verifyLatest()
 	secondOwner := login("second-owner@example.com", "Second-owner-password1!")
+	// PostgreSQL and the browser constrain names by characters, not UTF-8 bytes.
+	request("POST", "/api/v1/auth/signup", "", map[string]string{"workspace": strings.Repeat("ابر", 20), "username": "unicode-owner", "email": "unicode-owner@example.com", "password": "Unicode-owner-password1!"}, http.StatusAccepted)
 	secondGroup := idFrom(request("POST", "/api/v1/groups", secondOwner, map[string]any{"name": "Team A", "view_dashboard": true}, 200))
 	proveConnection("second-owner@example.com", "aws", Credentials{AccessKey: "tenant-two", SecretKey: "isolated-secret"})
 	secondAccount := idFrom(request("POST", "/api/v1/accounts", secondOwner, map[string]any{"name": "Account A", "provider": "aws", "group_id": secondGroup, "regions": []string{"us-east-1"}, "credentials": map[string]string{"access_key_id": "tenant-two", "secret_access_key": "isolated-secret"}}, 200))
@@ -374,6 +380,64 @@ func TestIntegration(t *testing.T) {
 	}
 	a.edsRefreshRunner = a.refreshEDSService
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/refresh?service=users&region=all", alibabaAccount), adminToken, map[string]any{}, 400)
+	request("GET", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", account1), adminToken, nil, 400)
+	emptyOSS := request("GET", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", alibabaAccount), adminToken, nil, 200)
+	if !strings.Contains(emptyOSS.Body.String(), `"snapshot":false`) {
+		t.Fatalf("missing OSS snapshot did not return immediately: %s", emptyOSS.Body.String())
+	}
+	if err = a.saveServiceSnapshot(ctx, workspaceID, alibabaAccount, "oss.buckets", "", map[string]any{"data": []map[string]any{{"name": "nexus-test-bucket", "region": "cn-hangzhou", "status": "available", "storage_bytes": 1024, "object_count": 2}}, "failed_buckets": []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	ossSnapshot := request("GET", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", alibabaAccount), adminToken, nil, 200)
+	if !strings.Contains(ossSnapshot.Body.String(), `"snapshot":true`) || !strings.Contains(ossSnapshot.Body.String(), `"name":"nexus-test-bucket"`) {
+		t.Fatalf("OSS snapshot was not returned: %s", ossSnapshot.Body.String())
+	}
+	ossStarted, releaseOSS := make(chan struct{}), make(chan struct{})
+	a.ossRefreshRunner = func(runCtx context.Context, gotWorkspace, gotAccount int64) error {
+		if gotWorkspace != workspaceID || gotAccount != alibabaAccount {
+			t.Errorf("unexpected OSS refresh scope: workspace=%d account=%d", gotWorkspace, gotAccount)
+		}
+		close(ossStarted)
+		select {
+		case <-releaseOSS:
+			return nil
+		case <-runCtx.Done():
+			return runCtx.Err()
+		}
+	}
+	queuedOSS := request("POST", fmt.Sprintf("/api/v1/accounts/%d/oss/refresh", alibabaAccount), adminToken, map[string]any{}, http.StatusAccepted)
+	var ossJob ossRefreshJob
+	if json.Unmarshal(queuedOSS.Body.Bytes(), &ossJob) != nil || ossJob.ID == "" || ossJob.Status != "queued" {
+		t.Fatalf("OSS refresh was not queued: %s", queuedOSS.Body.String())
+	}
+	select {
+	case <-ossStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("asynchronous OSS refresh did not start")
+	}
+	coalescedOSS := request("POST", fmt.Sprintf("/api/v1/accounts/%d/oss/refresh", alibabaAccount), adminToken, map[string]any{}, http.StatusAccepted)
+	var sameOSSJob ossRefreshJob
+	if json.Unmarshal(coalescedOSS.Body.Bytes(), &sameOSSJob) != nil || sameOSSJob.ID != ossJob.ID {
+		t.Fatalf("duplicate OSS refresh was not coalesced: %s", coalescedOSS.Body.String())
+	}
+	close(releaseOSS)
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		statusResponse := request("GET", fmt.Sprintf("/api/v1/accounts/%d/oss/refresh/%s", alibabaAccount, ossJob.ID), adminToken, nil, 200)
+		if json.Unmarshal(statusResponse.Body.Bytes(), &ossJob) != nil {
+			t.Fatal("invalid OSS job response")
+		}
+		if ossJob.Status == "completed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("OSS refresh did not complete: %s", statusResponse.Body.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	a.ossRefreshRunner = a.collectOSSBuckets
+	request("POST", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", alibabaAccount), adminToken, map[string]any{"name": "valid-private-bucket", "region": "cn-hangzhou", "storage_class": "Standard", "redundancy_type": "LRS", "confirm_cost": false}, 400)
+	request("POST", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", alibabaAccount), viewer, map[string]any{}, 403)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), viewer, map[string]any{}, 403)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"name": "desktop", "confirm_cost": false}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops/ecd-one/policy?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"policy_group_id": ""}, 400)
@@ -570,11 +634,11 @@ func TestIntegration(t *testing.T) {
 	request("GET", "/readyz", "", nil, 200)
 	request("GET", "/", "", nil, 200)
 	webAsset := request("GET", "/app.js", "", nil, 200)
-	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Refresh queued") {
+	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OSS buckets") || !strings.Contains(webAsset.Body.String(), "/oss/refresh") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Refresh queued") {
 		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
 	}
 	indexAsset := request("GET", "/", "", nil, 200)
-	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.17"} {
+	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.19"} {
 		if !strings.Contains(indexAsset.Body.String(), marker) {
 			t.Fatalf("sidebar marker %q is missing", marker)
 		}

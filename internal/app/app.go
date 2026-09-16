@@ -40,6 +40,7 @@ type App struct {
 	backgroundWG     sync.WaitGroup
 	refreshRunner    func(context.Context, int64, []int64) error
 	edsRefreshRunner func(context.Context, int64, int64, string, string) error
+	ossRefreshRunner func(context.Context, int64, int64) error
 	accountSlots     chan struct{}
 	regionSlots      chan struct{}
 }
@@ -93,6 +94,7 @@ func New(ctx context.Context) (*App, error) {
 	a.Policy = &PolicyEngine{DB: db}
 	a.refreshRunner = a.collectAccounts
 	a.edsRefreshRunner = a.refreshEDSService
+	a.ossRefreshRunner = a.collectOSSBuckets
 	if err = a.migrate(ctx); err != nil {
 		a.Close()
 		return nil, err
@@ -259,6 +261,8 @@ func (a *App) Handler() http.Handler {
 		"POST /api/v1/accounts/{id}/eds/desktops/{desktopID}/billing":            a.changeEDSBilling,
 		"GET /api/v1/accounts/{id}/eds/users":                                    a.edsUsers, "POST /api/v1/accounts/{id}/eds/users": a.createEDSUser,
 		"POST /api/v1/accounts/{id}/eds/refresh": a.refreshEDS, "GET /api/v1/accounts/{id}/eds/refresh/{jobID}": a.edsRefreshStatus,
+		"GET /api/v1/accounts/{id}/oss/buckets": a.ossBuckets, "POST /api/v1/accounts/{id}/oss/buckets": a.createOSSBucket,
+		"POST /api/v1/accounts/{id}/oss/refresh": a.refreshOSS, "GET /api/v1/accounts/{id}/oss/refresh/{jobID}": a.ossRefreshStatus,
 		"GET /api/v1/groups": a.groups, "POST /api/v1/groups": a.saveGroup, "PUT /api/v1/groups/{id}": a.saveGroup, "DELETE /api/v1/groups/{id}": a.deleteGroup,
 		"GET /api/v1/users": a.users, "POST /api/v1/users": a.saveUser, "PUT /api/v1/users/{id}": a.saveUser, "DELETE /api/v1/users/{id}": a.deleteUser,
 		"GET /api/v1/memberships": a.memberships, "PUT /api/v1/groups/{id}/members/{userID}": a.saveMembership, "DELETE /api/v1/groups/{id}/members/{userID}": a.deleteMembership,

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/netriun/nexus/internal/secure"
 	"golang.org/x/crypto/bcrypt"
@@ -130,8 +131,21 @@ func (a *App) signup(w http.ResponseWriter, r *http.Request) {
 	in.Workspace = strings.TrimSpace(in.Workspace)
 	in.Username = strings.TrimSpace(in.Username)
 	email, emailErr := normalizeEmail(in.Email)
-	if len(in.Workspace) < 2 || len(in.Workspace) > 100 || len(in.Username) < 3 || len(in.Username) > 100 || emailErr != nil || strongPassword(in.Password) != nil {
-		problem(w, 400, "Use a valid email, a 3–100 character username, a 2–100 character workspace, and a strong 10–72 byte password with uppercase, lowercase, number, and symbol")
+	workspaceLength, usernameLength := utf8.RuneCountInString(in.Workspace), utf8.RuneCountInString(in.Username)
+	if workspaceLength < 2 || workspaceLength > 100 {
+		write(w, http.StatusBadRequest, map[string]string{"error": "Workspace name must be 2–100 characters", "field": "workspace"})
+		return
+	}
+	if usernameLength < 3 || usernameLength > 100 {
+		write(w, http.StatusBadRequest, map[string]string{"error": "Owner username must be 3–100 characters", "field": "username"})
+		return
+	}
+	if emailErr != nil {
+		write(w, http.StatusBadRequest, map[string]string{"error": "Enter a valid email address", "field": "email"})
+		return
+	}
+	if passwordErr := strongPassword(in.Password); passwordErr != nil {
+		write(w, http.StatusBadRequest, map[string]string{"error": passwordErr.Error(), "field": "password"})
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)

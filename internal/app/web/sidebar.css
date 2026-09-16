@@ -46,3 +46,7 @@ html[data-theme="light"] .account-check:has(input:checked){background:#edf9f6;bo
  .sidebar{position:static;width:100%;padding:14px 16px}.sidebar .brand{margin-bottom:10px}.cloud-scope{display:block;padding:12px 0}.provider-selector{grid-template-columns:repeat(4,1fr)}.account-selector{grid-template-columns:repeat(2,minmax(0,1fr));max-height:104px}.sidebar-section{padding:11px 0}.sidebar-section>h2{margin-bottom:8px}#navigation{display:grid;grid-template-columns:1fr}.service-provider-title{display:none}.service-group{margin:0}.nav-links{display:flex;gap:4px;overflow-x:auto}.nav-links a{flex:0 0 auto;white-space:nowrap}.sidebar-bottom{display:none}main{margin-left:0}
 }
 @media(max-width:480px){.provider-selector{grid-template-columns:repeat(2,1fr)}.account-selector{grid-template-columns:1fr}}
+.badge.available{color:#398159;background:#ecf6eb}
+.badge.partial{color:#a27543;background:#faf2e7}
+html[data-theme="dark"] .badge.available{color:#54e7c0;background:rgba(69,240,194,.1)}
+html[data-theme="dark"] .badge.partial{color:#ffd27a;background:rgba(255,191,71,.1)}

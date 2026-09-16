@@ -21,6 +21,22 @@
     {
       "Effect": "Allow",
       "Action": [
+        "oss:ListBuckets",
+        "oss:GetBucketInfo",
+        "oss:GetBucketStat"
+      ],
+      "Resource": "acs:oss:*:*:*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "oss:PutBucket"
+      ],
+      "Resource": "acs:oss:*:*:*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "ecd:DescribeDesktops",
         "ecd:DescribeRegions",
         "ecd:DescribeBundles",
