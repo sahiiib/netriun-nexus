@@ -24,6 +24,7 @@ This is the canonical information architecture for product documentation. Keep t
 - Alibaba WUYING EDS desktops
 - Alibaba WUYING EDS users
 - Alibaba OSS buckets
+- Alibaba ECS security groups and ingress/egress rules
 - Future provider services such as object storage, databases, networking, and managed desktops
 
 ## 4. Access Management

@@ -1,6 +1,6 @@
 # Alibaba Cloud connection
 
-Netriun Nexus inventories Alibaba Cloud ECS instances and can submit start, stop, and reboot operations. When an Alibaba account is selected in the portal, it also exposes WUYING Elastic Desktop Service (EDS) and Object Storage Service (OSS). OSS supports snapshot-first bucket inventory, bucket metadata and usage statistics, and private bucket creation.
+Netriun Nexus inventories Alibaba Cloud ECS instances and can submit start, stop, and reboot operations. The ECS section also inventories security groups and their rules, shows attached groups on each instance, and lets account managers add or revoke ingress and egress rules. When an Alibaba account is selected in the portal, it also exposes WUYING Elastic Desktop Service (EDS) and Object Storage Service (OSS). OSS supports snapshot-first bucket inventory, bucket metadata and usage statistics, and private bucket creation.
 
 ## Create a dedicated RAM user
 
@@ -12,7 +12,7 @@ Netriun Nexus inventories Alibaba Cloud ECS instances and can submit start, stop
 
 ## Grant the service permissions you enable
 
-1. In RAM, open **Permissions > Policies** and create a custom policy using [alibaba-policy.json](alibaba-policy.json). Remove the EDS or OSS statements for services this connection does not use. For read-only OSS access, remove the separate `oss:PutBucket` statement.
+1. In RAM, open **Permissions > Policies** and create a custom policy using [alibaba-policy.json](alibaba-policy.json). Remove the EDS, OSS, or security-group mutation statements for services this connection does not use. For read-only ECS security groups, keep `ecs:DescribeSecurityGroups` and `ecs:DescribeSecurityGroupAttribute` but remove the separate Authorize/Revoke statement. For read-only OSS access, remove the separate `oss:PutBucket` statement.
 2. For production, replace the lifecycle statement's wildcard resource with the exact instance ARNs that Netriun may operate, for example `acs:ecs:cn-hangzhou:1234567890123456:instance/i-example`.
 3. Return to **Identities > Users**, open `netriun-nexus`, select **Add Permissions**, and attach the custom policy.
 4. Do not attach `AdministratorAccess`, `AliyunRAMFullAccess`, or broad product full-access policies to this application user. The EDS API currently documents these operations with `Resource: "*"`, so keep the portal's account and group permissions narrow.
@@ -24,11 +24,13 @@ Netriun Nexus inventories Alibaba Cloud ECS instances and can submit start, stop
 3. Enter the AccessKey ID and AccessKey secret.
 4. Enter comma-separated region IDs such as `cn-hangzhou, ap-southeast-1`, or leave the field blank to discover all ECS regions available to the credential.
 5. Save the connection and open the compute or EDS page. Nexus displays the latest database snapshot immediately, queues a live refresh in the background, and updates the page when it finishes. Connection or permission failures appear without deleting the last healthy snapshot.
-6. Select the Alibaba connection from **Active cloud account** in the sidebar. ECS, EDS desktops, EDS users, and OSS buckets then become available for that account.
+6. Select the Alibaba connection from **Active cloud account** in the sidebar. ECS instances, ECS security groups, EDS desktops, EDS users, and OSS buckets then become available for that account.
 
 Desktop creation and renewal may incur charges. Netriun Nexus requires an explicit confirmation for both operations. `AutoPay` is off unless selected; an EDS renewal with AutoPay off may create an unpaid order. Subscription renewal only applies to prepaid desktops, and user entitlement changes require the desktop to be running.
 
 OSS inventory requires `oss:ListBuckets`, `oss:GetBucketInfo`, and `oss:GetBucketStat`. Creating a bucket additionally requires `oss:PutBucket` and explicit cost confirmation in Nexus. Buckets created by Nexus use a private ACL; the portal does not offer public ACL creation. Alibaba documents that bucket statistics can lag actual usage by more than one hour.
+
+Security-group inventory requires `ecs:DescribeSecurityGroups` and `ecs:DescribeSecurityGroupAttribute`. Rule creation requires `ecs:AuthorizeSecurityGroup` or `ecs:AuthorizeSecurityGroupEgress`; rule deletion requires the matching `ecs:RevokeSecurityGroup` or `ecs:RevokeSecurityGroupEgress` action. Alibaba's current ECS RAM authorization table marks these rule APIs as all-resource operations, so the narrowly enumerated mutation statement uses `Resource: "*"`; remove that complete statement for a read-only connection. Nexus validates CIDRs, protocols, port ranges, policy, and priority before submission, records mutation intent in the audit log, and warns against broad public CIDRs. Account Manager access is required for rule changes.
 
 If the connection uses an older copy of the RAM policy, replace it with the current [alibaba-policy.json](alibaba-policy.json). The region combobox requires `ecd:DescribeRegions`; custom desktop configuration requires `ecd:DescribeDesktopTypes` and `ecd:DescribeImages`; command output requires `ecd:DescribeInvocations`. The Manage actions also require `ecd:ModifyDesktopsPolicyGroup`, `ecd:SetDesktopMaintenance`, `ecd:RunCommand`, and `ecd:ModifyDesktopChargeType`.
 

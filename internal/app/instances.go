@@ -107,8 +107,9 @@ func (a *App) instance(w http.ResponseWriter, r *http.Request) {
 		dbError(w, err)
 		return
 	}
+	securityGroups := a.instanceSecurityGroups(r.Context(), current(r).WorkspaceID, accountID, region, raw)
 	if r.URL.Query().Get("live") != "true" {
-		write(w, 200, map[string]any{"instance": raw})
+		write(w, 200, map[string]any{"instance": raw, "security_groups": securityGroups})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
@@ -147,7 +148,7 @@ func (a *App) instance(w http.ResponseWriter, r *http.Request) {
 		problem(w, 502, "Cloud details unavailable; check credentials and permissions")
 		return
 	}
-	write(w, 200, map[string]any{"instance": raw, "live": details})
+	write(w, 200, map[string]any{"instance": raw, "security_groups": securityGroups, "live": details})
 }
 func (a *App) action(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "id")

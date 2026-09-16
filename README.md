@@ -36,6 +36,7 @@ When upgrading an existing installation from Netriun CCMP, stop the old applicat
 - An active-account context that exposes only the services belonging to the selected cloud provider.
 - Live Alibaba WUYING EDS desktops and convenience users, including create, renew, user assignment, start, stop, and reboot workflows.
 - Snapshot-first Alibaba OSS bucket inventory with metadata, usage statistics, search/sort/filter, list/visual modes, and private bucket creation.
+- Snapshot-first Alibaba ECS security groups with attached-instance visibility, list/visual modes, rule inspection, and audited ingress/egress rule creation and deletion.
 - Guided AWS, Alibaba Cloud, Azure and Google Cloud connection setup with a required live credential and compute-access test before saving.
 - Scheduled collection across explicitly selected or all enabled regions.
 - Paginated provider collection and transactional reconciliation per successful region; failed regions retain their previous inventory.
@@ -86,7 +87,7 @@ Use dedicated AWS credentials. Inventory needs `ec2:DescribeRegions` and `ec2:De
 
 ## Alibaba Cloud access
 
-Use a dedicated RAM user AccessKey, not a root-account AccessKey. ECS inventory needs `ecs:DescribeRegions` and `ecs:DescribeInstances`; actions need `ecs:StartInstance`, `ecs:StopInstance`, and `ecs:RebootInstance`. WUYING EDS uses narrowly listed `ecd` actions for region discovery, desktop inventory, provisioning, renewal, lifecycle, policy, maintenance, remote-command, billing, entitlement, and convenience-user management. OSS inventory needs `oss:ListBuckets`, `oss:GetBucketInfo`, and `oss:GetBucketStat`; private bucket creation additionally needs `oss:PutBucket`. Follow the [Alibaba Cloud connection guide](docs/alibaba.md) and start from [docs/alibaba-policy.json](docs/alibaba-policy.json); remove product statements you do not use and restrict ECS action resources before production use. Static STS security tokens are supported and must be replaced before expiry. Leaving regions blank discovers all ECS regions visible to the credential.
+Use a dedicated RAM user AccessKey, not a root-account AccessKey. ECS inventory needs `ecs:DescribeRegions` and `ecs:DescribeInstances`; actions need `ecs:StartInstance`, `ecs:StopInstance`, and `ecs:RebootInstance`. Security-group inventory needs `ecs:DescribeSecurityGroups` and `ecs:DescribeSecurityGroupAttribute`; its separate Authorize/Revoke statement is needed only for rule management. WUYING EDS uses narrowly listed `ecd` actions for region discovery, desktop inventory, provisioning, renewal, lifecycle, policy, maintenance, remote-command, billing, entitlement, and convenience-user management. OSS inventory needs `oss:ListBuckets`, `oss:GetBucketInfo`, and `oss:GetBucketStat`; private bucket creation additionally needs `oss:PutBucket`. Follow the [Alibaba Cloud connection guide](docs/alibaba.md) and start from [docs/alibaba-policy.json](docs/alibaba-policy.json); remove product statements you do not use and restrict ECS action resources before production use. Static STS security tokens are supported and must be replaced before expiry. Leaving regions blank discovers all ECS regions visible to the credential.
 
 ## Azure and Google Cloud access
 

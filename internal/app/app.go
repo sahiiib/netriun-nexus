@@ -27,22 +27,23 @@ import (
 var assets embed.FS
 
 type App struct {
-	DB               *pgxpool.Pool
-	Redis            *redis.Client
-	Vault            *secure.Vault
-	SecureCookies    bool
-	Origin           string
-	TrustedProxies   []*net.IPNet
-	Mailer           mailSender
-	Policy           *PolicyEngine
-	backgroundCtx    context.Context
-	backgroundStop   context.CancelFunc
-	backgroundWG     sync.WaitGroup
-	refreshRunner    func(context.Context, int64, []int64) error
-	edsRefreshRunner func(context.Context, int64, int64, string, string) error
-	ossRefreshRunner func(context.Context, int64, int64) error
-	accountSlots     chan struct{}
-	regionSlots      chan struct{}
+	DB                         *pgxpool.Pool
+	Redis                      *redis.Client
+	Vault                      *secure.Vault
+	SecureCookies              bool
+	Origin                     string
+	TrustedProxies             []*net.IPNet
+	Mailer                     mailSender
+	Policy                     *PolicyEngine
+	backgroundCtx              context.Context
+	backgroundStop             context.CancelFunc
+	backgroundWG               sync.WaitGroup
+	refreshRunner              func(context.Context, int64, []int64) error
+	edsRefreshRunner           func(context.Context, int64, int64, string, string) error
+	ossRefreshRunner           func(context.Context, int64, int64) error
+	securityGroupRefreshRunner func(context.Context, int64, int64) error
+	accountSlots               chan struct{}
+	regionSlots                chan struct{}
 }
 type User struct {
 	ID            int64  `json:"id"`
@@ -95,6 +96,7 @@ func New(ctx context.Context) (*App, error) {
 	a.refreshRunner = a.collectAccounts
 	a.edsRefreshRunner = a.refreshEDSService
 	a.ossRefreshRunner = a.collectOSSBuckets
+	a.securityGroupRefreshRunner = a.collectSecurityGroups
 	if err = a.migrate(ctx); err != nil {
 		a.Close()
 		return nil, err
@@ -263,6 +265,10 @@ func (a *App) Handler() http.Handler {
 		"POST /api/v1/accounts/{id}/eds/refresh": a.refreshEDS, "GET /api/v1/accounts/{id}/eds/refresh/{jobID}": a.edsRefreshStatus,
 		"GET /api/v1/accounts/{id}/oss/buckets": a.ossBuckets, "POST /api/v1/accounts/{id}/oss/buckets": a.createOSSBucket,
 		"POST /api/v1/accounts/{id}/oss/refresh": a.refreshOSS, "GET /api/v1/accounts/{id}/oss/refresh/{jobID}": a.ossRefreshStatus,
+		"GET /api/v1/accounts/{id}/ecs/security-groups":          a.securityGroups,
+		"POST /api/v1/accounts/{id}/ecs/security-groups/refresh": a.refreshSecurityGroups, "GET /api/v1/accounts/{id}/ecs/security-groups/refresh/{jobID}": a.securityGroupRefreshStatus,
+		"POST /api/v1/accounts/{id}/ecs/security-groups/{groupID}/rules":            a.createSecurityGroupRule,
+		"DELETE /api/v1/accounts/{id}/ecs/security-groups/{groupID}/rules/{ruleID}": a.deleteSecurityGroupRule,
 		"GET /api/v1/groups": a.groups, "POST /api/v1/groups": a.saveGroup, "PUT /api/v1/groups/{id}": a.saveGroup, "DELETE /api/v1/groups/{id}": a.deleteGroup,
 		"GET /api/v1/users": a.users, "POST /api/v1/users": a.saveUser, "PUT /api/v1/users/{id}": a.saveUser, "DELETE /api/v1/users/{id}": a.deleteUser,
 		"GET /api/v1/memberships": a.memberships, "PUT /api/v1/groups/{id}/members/{userID}": a.saveMembership, "DELETE /api/v1/groups/{id}/members/{userID}": a.deleteMembership,

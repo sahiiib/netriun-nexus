@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Netriun Nexus API",
-    "version": "1.9.0",
-    "description": "Multi-tenant workspace API with live provider refresh, database snapshots, custom account access policies, local verified-email authentication, and workspace-scoped OIDC/SAML SSO. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. The workspace owner retains local break-glass access when SSO is required."
+    "version": "1.10.0",
+    "description": "Multi-tenant workspace API with live provider refresh, database snapshots, Alibaba ECS security-group rule management, custom account access policies, local verified-email authentication, and workspace-scoped OIDC/SAML SSO. Lists return {data: [...]}; errors return {error: message}. Login tokens expire after 12 hours. Community workspaces include one owner and five additional users. The workspace owner retains local break-glass access when SSO is required."
   },
   "servers": [
     {
@@ -1340,6 +1340,77 @@
         }
       }
     },
+    "/accounts/{id}/ecs/security-groups": {
+      "get": {
+        "summary": "Read the latest Alibaba ECS security-group and rule snapshot",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }],
+        "responses": {
+          "200": { "description": "Security groups, attached-instance counts, and rule snapshot; snapshot=false before the first successful refresh" },
+          "400": { "description": "The account is not an Alibaba connection" },
+          "403": { "description": "Cloud account access required" }
+        }
+      }
+    },
+    "/accounts/{id}/ecs/security-groups/refresh": {
+      "post": {
+        "summary": "Queue an asynchronous ECS security-group refresh while the current snapshot remains readable",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }],
+        "responses": {
+          "202": { "description": "Refresh queued, or an equivalent in-flight refresh was reused", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecurityGroupRefreshJob" } } } },
+          "400": { "description": "The account is not an Alibaba connection" },
+          "403": { "description": "Cloud account access required" },
+          "503": { "description": "Refresh queue unavailable" }
+        }
+      }
+    },
+    "/accounts/{id}/ecs/security-groups/refresh/{jobID}": {
+      "get": {
+        "summary": "Read asynchronous ECS security-group refresh status",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "jobID", "in": "path", "required": true, "schema": { "type": "string", "minLength": 20, "maxLength": 100 } }
+        ],
+        "responses": {
+          "200": { "description": "Current security-group refresh status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecurityGroupRefreshJob" } } } },
+          "403": { "description": "Cloud account access required" },
+          "404": { "description": "Job not found or expired" }
+        }
+      }
+    },
+    "/accounts/{id}/ecs/security-groups/{groupID}/rules": {
+      "post": {
+        "summary": "Create an Alibaba ECS ingress or egress security-group rule",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "groupID", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^sg-[A-Za-z0-9-]+$" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecurityGroupRuleCreate" } } } },
+        "responses": {
+          "201": { "description": "Rule created" },
+          "400": { "description": "Invalid region, direction, protocol, ports, CIDR, policy, or priority" },
+          "403": { "description": "Account management access required" },
+          "502": { "description": "Alibaba ECS rejected the rule" }
+        }
+      }
+    },
+    "/accounts/{id}/ecs/security-groups/{groupID}/rules/{ruleID}": {
+      "delete": {
+        "summary": "Delete an Alibaba ECS ingress or egress security-group rule",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "groupID", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^sg-[A-Za-z0-9-]+$" } },
+          { "name": "ruleID", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^sgr-[A-Za-z0-9-]+$" } },
+          { "name": "region", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "direction", "in": "query", "required": true, "schema": { "type": "string", "enum": ["ingress", "egress"] } }
+        ],
+        "responses": {
+          "204": { "description": "Rule deleted" },
+          "400": { "description": "Invalid security-group ID, rule ID, region, or direction" },
+          "403": { "description": "Account management access required" },
+          "502": { "description": "Alibaba ECS rejected the deletion" }
+        }
+      }
+    },
     "/memberships": {
       "get": {
         "summary": "List visible memberships",
@@ -1820,6 +1891,20 @@
         },
         "required": ["account_id", "status"]
       },
+      "SecurityGroupRefreshJob": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "account_id": { "type": "integer", "minimum": 1 },
+          "status": { "type": "string", "enum": ["queued", "running", "completed", "failed"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "started_at": { "type": "string", "format": "date-time" },
+          "completed_at": { "type": "string", "format": "date-time" },
+          "duration_ms": { "type": "integer", "minimum": 0 },
+          "error": { "type": "string" }
+        },
+        "required": ["account_id", "status"]
+      },
       "Login": {
         "type": "object",
         "additionalProperties": false,
@@ -2107,6 +2192,22 @@
           "confirm_cost": { "type": "boolean", "enum": [true] }
         },
         "required": ["name", "region", "storage_class", "redundancy_type", "confirm_cost"]
+      },
+      "SecurityGroupRuleCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "region": { "type": "string" },
+          "direction": { "type": "string", "enum": ["ingress", "egress"] },
+          "protocol": { "type": "string", "enum": ["tcp", "udp", "icmp", "all"] },
+          "port_from": { "type": "integer", "minimum": 1, "maximum": 65535, "description": "Ignored for icmp and all" },
+          "port_to": { "type": "integer", "minimum": 1, "maximum": 65535, "description": "Ignored for icmp and all" },
+          "cidr": { "type": "string", "description": "IPv4 or IPv6 CIDR source for ingress and destination for egress" },
+          "policy": { "type": "string", "enum": ["accept", "drop"] },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "description": { "type": "string", "maxLength": 512 }
+        },
+        "required": ["region", "direction", "protocol", "cidr", "policy", "priority"]
       },
       "EDSDesktopCreate": {
         "type": "object",

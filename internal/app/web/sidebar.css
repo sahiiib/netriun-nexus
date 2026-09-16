@@ -50,3 +50,7 @@ html[data-theme="light"] .account-check:has(input:checked){background:#edf9f6;bo
 .badge.partial{color:#a27543;background:#faf2e7}
 html[data-theme="dark"] .badge.available{color:#54e7c0;background:rgba(69,240,194,.1)}
 html[data-theme="dark"] .badge.partial{color:#ffd27a;background:rgba(255,191,71,.1)}
+.badge.ingress,.badge.customer,.badge.normal{color:#087c69;background:#e2f6f1}
+.badge.egress,.badge.managed{color:#9b6829;background:#faf0df}
+html[data-theme="dark"] .badge.ingress,html[data-theme="dark"] .badge.customer,html[data-theme="dark"] .badge.normal{color:#54e7c0;background:rgba(69,240,194,.1)}
+html[data-theme="dark"] .badge.egress,html[data-theme="dark"] .badge.managed{color:#ffd27a;background:rgba(255,191,71,.1)}

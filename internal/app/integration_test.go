@@ -438,6 +438,74 @@ func TestIntegration(t *testing.T) {
 	a.ossRefreshRunner = a.collectOSSBuckets
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", alibabaAccount), adminToken, map[string]any{"name": "valid-private-bucket", "region": "cn-hangzhou", "storage_class": "Standard", "redundancy_type": "LRS", "confirm_cost": false}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/oss/buckets", alibabaAccount), viewer, map[string]any{}, 403)
+	request("GET", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups", account1), adminToken, nil, 400)
+	emptySecurityGroups := request("GET", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups", alibabaAccount), adminToken, nil, 200)
+	if !strings.Contains(emptySecurityGroups.Body.String(), `"snapshot":false`) {
+		t.Fatalf("missing security group snapshot did not return immediately: %s", emptySecurityGroups.Body.String())
+	}
+	if err = a.saveServiceSnapshot(ctx, workspaceID, alibabaAccount, "ecs.security_groups", "", map[string]any{"data": []map[string]any{{"id": "sg-one", "name": "web-tier", "region": "cn-hangzhou", "vpc_id": "vpc-one", "type": "normal", "instance_count": 1, "rule_count": 1, "rules_available": true, "rules": []map[string]any{{"id": "sgr-one", "direction": "ingress", "protocol": "tcp", "port_range": "443/443", "source": "203.0.113.0/24", "policy": "accept", "priority": "1"}}}}, "failed_regions": []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	securityGroupSnapshot := request("GET", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups", alibabaAccount), adminToken, nil, 200)
+	if !strings.Contains(securityGroupSnapshot.Body.String(), `"snapshot":true`) || !strings.Contains(securityGroupSnapshot.Body.String(), `"id":"sg-one"`) {
+		t.Fatalf("security group snapshot was not returned: %s", securityGroupSnapshot.Body.String())
+	}
+	securityGroupStarted, releaseSecurityGroups := make(chan struct{}), make(chan struct{})
+	a.securityGroupRefreshRunner = func(runCtx context.Context, gotWorkspace, gotAccount int64) error {
+		if gotWorkspace != workspaceID || gotAccount != alibabaAccount {
+			t.Errorf("unexpected security group refresh scope: workspace=%d account=%d", gotWorkspace, gotAccount)
+		}
+		close(securityGroupStarted)
+		select {
+		case <-releaseSecurityGroups:
+			return nil
+		case <-runCtx.Done():
+			return runCtx.Err()
+		}
+	}
+	queuedSecurityGroups := request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/refresh", alibabaAccount), adminToken, map[string]any{}, http.StatusAccepted)
+	var securityGroupJob securityGroupRefreshJob
+	if json.Unmarshal(queuedSecurityGroups.Body.Bytes(), &securityGroupJob) != nil || securityGroupJob.ID == "" || securityGroupJob.Status != "queued" {
+		t.Fatalf("security group refresh was not queued: %s", queuedSecurityGroups.Body.String())
+	}
+	select {
+	case <-securityGroupStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("asynchronous security group refresh did not start")
+	}
+	coalescedSecurityGroups := request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/refresh", alibabaAccount), adminToken, map[string]any{}, http.StatusAccepted)
+	var sameSecurityGroupJob securityGroupRefreshJob
+	if json.Unmarshal(coalescedSecurityGroups.Body.Bytes(), &sameSecurityGroupJob) != nil || sameSecurityGroupJob.ID != securityGroupJob.ID {
+		t.Fatalf("duplicate security group refresh was not coalesced: %s", coalescedSecurityGroups.Body.String())
+	}
+	close(releaseSecurityGroups)
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		statusResponse := request("GET", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/refresh/%s", alibabaAccount, securityGroupJob.ID), adminToken, nil, 200)
+		if json.Unmarshal(statusResponse.Body.Bytes(), &securityGroupJob) != nil {
+			t.Fatal("invalid security group job response")
+		}
+		if securityGroupJob.Status == "completed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("security group refresh did not complete: %s", statusResponse.Body.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	a.securityGroupRefreshRunner = a.collectSecurityGroups
+	request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/invalid/rules", alibabaAccount), adminToken, map[string]any{}, 400)
+	request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/sg-one/rules", alibabaAccount), adminToken, map[string]any{"region": "cn-hangzhou", "direction": "ingress", "protocol": "tcp", "port_from": 100, "port_to": 22, "cidr": "0.0.0.0/0", "policy": "accept", "priority": 1}, 400)
+	request("POST", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/sg-one/rules", alibabaAccount), viewer, map[string]any{}, 403)
+	request("DELETE", fmt.Sprintf("/api/v1/accounts/%d/ecs/security-groups/sg-one/rules/invalid?region=cn-hangzhou&direction=ingress", alibabaAccount), adminToken, nil, 400)
+	var alibabaInstance int64
+	if err = a.DB.QueryRow(ctx, `INSERT INTO instances(account_id,instance_id,region,name,state,instance_type,details) VALUES($1,'i-alibaba-security','cn-hangzhou','secure-web','running','ecs.g7.large','{"security_group_ids":["sg-one"],"vpc_id":"vpc-one"}') RETURNING id`, alibabaAccount).Scan(&alibabaInstance); err != nil {
+		t.Fatal(err)
+	}
+	instanceSecurityGroups := request("GET", fmt.Sprintf("/api/v1/instances/%d", alibabaInstance), adminToken, nil, 200)
+	if !strings.Contains(instanceSecurityGroups.Body.String(), `"security_groups":[{"id":"sg-one","name":"web-tier"`) {
+		t.Fatalf("instance security group bindings were not returned: %s", instanceSecurityGroups.Body.String())
+	}
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), viewer, map[string]any{}, 403)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"name": "desktop", "confirm_cost": false}, 400)
 	request("POST", fmt.Sprintf("/api/v1/accounts/%d/eds/desktops/ecd-one/policy?region=cn-hangzhou", alibabaAccount), adminToken, map[string]any{"policy_group_id": ""}, 400)
@@ -634,11 +702,11 @@ func TestIntegration(t *testing.T) {
 	request("GET", "/readyz", "", nil, 200)
 	request("GET", "/", "", nil, 200)
 	webAsset := request("GET", "/app.js", "", nil, 200)
-	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OSS buckets") || !strings.Contains(webAsset.Body.String(), "/oss/refresh") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Refresh queued") {
+	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OSS buckets") || !strings.Contains(webAsset.Body.String(), "/oss/refresh") || !strings.Contains(webAsset.Body.String(), "Security groups") || !strings.Contains(webAsset.Body.String(), "/ecs/security-groups") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Refresh queued") {
 		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
 	}
 	indexAsset := request("GET", "/", "", nil, 200)
-	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.19"} {
+	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.20"} {
 		if !strings.Contains(indexAsset.Body.String(), marker) {
 			t.Fatalf("sidebar marker %q is missing", marker)
 		}
