@@ -20,7 +20,7 @@ const serviceViews={instances:localStorage.getItem('nexus.view.instances')||'lis
 const providers={aws:{name:'Amazon Web Services',compute:'EC2'},alibaba:{name:'Alibaba Cloud',compute:'ECS'},azure:{name:'Microsoft Azure',compute:'Virtual Machines'},gcp:{name:'Google Cloud',compute:'Compute Engine'}};
 const serviceCatalog={
  aws:[{category:'Computing',items:[{page:'instances',icon:'⌁',label:'EC2 instances'}]}],
- alibaba:[{category:'Computing',items:[{page:'instances',icon:'⌁',label:'ECS instances'},{page:'securitygroups',icon:'⬡',label:'Security groups'},{page:'eds',icon:'▣',label:'EDS desktops'},{page:'edsusers',icon:'◎',label:'EDS users'}]},{category:'Data & Storage',items:[{page:'oss',icon:'◫',label:'OSS buckets'}]}],
+ alibaba:[{category:'Computing',sections:[{label:'Computer service',items:[{page:'instances',icon:'⌁',label:'Instances'},{page:'securitygroups',icon:'⬡',label:'Security groups'}]},{label:'Desktop service',items:[{page:'eds',icon:'▣',label:'Desktops'},{page:'edsusers',icon:'◎',label:'Users'}]}]},{category:'Data & Storage',items:[{page:'oss',icon:'◫',label:'OSS buckets'}]}],
  azure:[{category:'Computing',items:[{page:'instances',icon:'⌁',label:'Virtual Machines'}]}],
  gcp:[{category:'Computing',items:[{page:'instances',icon:'⌁',label:'Compute Engine'}]}]
 };
@@ -62,7 +62,8 @@ function syncCloudSidebar(){
 }
 function renderCloudServiceNavigation(){
  const catalog=serviceCatalog[selectedProvider]||[];
- $('#cloud-service-navigation').innerHTML=`<div class="service-provider-title"><span>${selectedProvider.toUpperCase()}</span><small>${providers[selectedProvider]?.name||selectedProvider}</small></div>`+catalog.map(group=>`<div class="service-group"><h3>${esc(group.category)}</h3><div class="nav-links">${group.items.map(item=>`<a href="#${item.page}" data-page="${item.page}"><span>${item.icon}</span>${esc(item.label)}</a>`).join('')}</div></div>`).join('');
+ const links=items=>`<div class="nav-links">${items.map(item=>`<a href="#${item.page}" data-page="${item.page}"><span>${item.icon}</span>${esc(item.label)}</a>`).join('')}</div>`;
+ $('#cloud-service-navigation').innerHTML=`<div class="service-provider-title"><span>${selectedProvider.toUpperCase()}</span><small>${providers[selectedProvider]?.name||selectedProvider}</small></div>`+catalog.map(group=>`<div class="service-group"><h3>${esc(group.category)}</h3>${group.sections?`<div class="service-subgroups">${group.sections.map(section=>`<section class="service-subgroup"><h4>${esc(section.label)}</h4>${links(section.items)}</section>`).join('')}</div>`:links(group.items)}</div>`).join('');
 }
 const sleep=milliseconds=>new Promise(resolve=>setTimeout(resolve,milliseconds));
 const inventoryScope=()=>`${selectedProvider}:${selectedCloudAccounts().map(account=>account.id).sort((a,b)=>a-b).join(',')}`;
