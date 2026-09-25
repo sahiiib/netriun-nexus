@@ -62,8 +62,8 @@ function syncCloudSidebar(){
 }
 function renderCloudServiceNavigation(){
  const catalog=serviceCatalog[selectedProvider]||[];
- const links=items=>`<div class="nav-links">${items.map(item=>`<a href="#${item.page}" data-page="${item.page}"><span>${item.icon}</span>${esc(item.label)}</a>`).join('')}</div>`;
- $('#cloud-service-navigation').innerHTML=`<div class="service-provider-title"><span>${selectedProvider.toUpperCase()}</span><small>${providers[selectedProvider]?.name||selectedProvider}</small></div>`+catalog.map(group=>`<div class="service-group"><h3>${esc(group.category)}</h3>${group.sections?`<div class="service-subgroups">${group.sections.map(section=>`<section class="service-subgroup"><h4>${esc(section.label)}</h4>${links(section.items)}</section>`).join('')}</div>`:links(group.items)}</div>`).join('');
+ const leaves=items=>`<ul class="service-tree-children service-tree-leaves">${items.map(item=>`<li><a href="#${item.page}" data-page="${item.page}"><span>${item.icon}</span>${esc(item.label)}</a></li>`).join('')}</ul>`;
+ $('#cloud-service-navigation').innerHTML=`<div class="service-provider-title"><span>${selectedProvider.toUpperCase()}</span><small>${providers[selectedProvider]?.name||selectedProvider}</small></div>`+catalog.map(group=>`<section class="service-tree-group"><h3 class="service-tree-node service-tree-root">${esc(group.category)}</h3>${group.sections?`<ul class="service-tree-children service-tree-branches">${group.sections.map(section=>`<li><h4 class="service-tree-node service-tree-branch">${esc(section.label)}</h4>${leaves(section.items)}</li>`).join('')}</ul>`:leaves(group.items)}</section>`).join('');
 }
 const sleep=milliseconds=>new Promise(resolve=>setTimeout(resolve,milliseconds));
 const inventoryScope=()=>`${selectedProvider}:${selectedCloudAccounts().map(account=>account.id).sort((a,b)=>a-b).join(',')}`;
