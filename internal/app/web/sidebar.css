@@ -31,9 +31,14 @@ main{margin-left:292px}
 .service-provider-title span{color:#5ee8c4;font-size:10px;font-weight:700}
 .service-provider-title small{overflow:hidden;color:#718298;font-size:9px;text-overflow:ellipsis;white-space:nowrap}
 .service-tree-group{margin:10px 4px 14px}
-.service-tree-node{margin:0;color:#7f91a7;font-weight:650}
-.service-tree-root{padding:4px 8px;color:#63748a;font-size:9px;letter-spacing:1px;text-transform:uppercase}
-.service-tree-branch{padding:8px 9px 5px;font-size:10px;letter-spacing:.25px}
+.service-tree-heading{margin:0}
+.service-tree-node{display:flex;align-items:center;gap:6px;width:100%;margin:0;border:0;border-radius:5px;background:transparent;color:#7f91a7;font-weight:650;text-align:left;cursor:pointer}
+.service-tree-node:hover{background:rgba(255,255,255,.04);color:#b5c4d6}
+.service-tree-node:focus-visible{outline:2px solid rgba(69,240,194,.65)}
+.service-tree-root{padding:6px 8px;color:#63748a;font-size:9px;letter-spacing:1px;text-transform:uppercase}
+.service-tree-branch{padding:8px 7px 5px;font-size:10px;letter-spacing:.25px}
+.tree-chevron{display:inline-grid;flex:0 0 13px;place-items:center;font-size:15px;line-height:1;transform:rotate(0);transition:transform .16s ease}
+.service-tree-node[aria-expanded="true"] .tree-chevron{transform:rotate(90deg)}
 .service-tree-children{position:relative;margin:0 0 0 11px;padding:0 0 0 14px;border-left:1px solid var(--line);list-style:none}
 .service-tree-children>li{position:relative;margin:0;padding:0}
 .service-tree-children>li:before{position:absolute;top:15px;left:-14px;width:13px;border-top:1px solid var(--line);content:""}
@@ -51,6 +56,7 @@ html[data-theme="light"] .provider-radio.active{background:linear-gradient(145de
 html[data-theme="light"] .provider-radio span,html[data-theme="light"] .account-check strong{color:#40556b}
 html[data-theme="light"] .provider-radio.active span{color:#087c69}
 html[data-theme="light"] .account-check:has(input:checked){background:#edf9f6;border-color:#c6ebe2}
+html[data-theme="light"] .service-tree-node:hover{background:#edf4f8;color:#1a3046}
 html[data-theme="light"] .service-tree-children>li:last-child:after{background:#fafdfd}
 @media(max-width:1100px){.sidebar{width:260px}main{margin-left:260px}.provider-selector{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:750px){

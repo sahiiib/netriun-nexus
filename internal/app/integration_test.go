@@ -702,11 +702,11 @@ func TestIntegration(t *testing.T) {
 	request("GET", "/readyz", "", nil, 200)
 	request("GET", "/", "", nil, 200)
 	webAsset := request("GET", "/app.js", "", nil, 200)
-	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OSS buckets") || !strings.Contains(webAsset.Body.String(), "/oss/refresh") || !strings.Contains(webAsset.Body.String(), "Security groups") || !strings.Contains(webAsset.Body.String(), "Computer service") || !strings.Contains(webAsset.Body.String(), "Desktop service") || !strings.Contains(webAsset.Body.String(), "service-tree-children") || !strings.Contains(webAsset.Body.String(), "/ecs/security-groups") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Refresh queued") {
+	if webAsset.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(webAsset.Body.String(), "All available regions") || !strings.Contains(webAsset.Body.String(), "Visual mode") || !strings.Contains(webAsset.Body.String(), "OSS buckets") || !strings.Contains(webAsset.Body.String(), "/oss/refresh") || !strings.Contains(webAsset.Body.String(), "Security groups") || !strings.Contains(webAsset.Body.String(), "Computer service") || !strings.Contains(webAsset.Body.String(), "Desktop service") || !strings.Contains(webAsset.Body.String(), "service-tree-children") || !strings.Contains(webAsset.Body.String(), "data-tree-toggle") || !strings.Contains(webAsset.Body.String(), "aria-expanded") || !strings.Contains(webAsset.Body.String(), "/ecs/security-groups") || !strings.Contains(webAsset.Body.String(), "OIDC & SAML providers") || !strings.Contains(webAsset.Body.String(), "account_ids") || !strings.Contains(webAsset.Body.String(), "serviceCatalog") || !strings.Contains(webAsset.Body.String(), "Refresh queued") {
 		t.Fatalf("updated service controls are not exposed safely: cache=%q", webAsset.Header().Get("Cache-Control"))
 	}
 	indexAsset := request("GET", "/", "", nil, 200)
-	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.22"} {
+	for _, marker := range []string{"Active cloud account", "Cloud services", "Workspace settings", "Documentation", "API reference", "/sidebar.css?v=0.1.23"} {
 		if !strings.Contains(indexAsset.Body.String(), marker) {
 			t.Fatalf("sidebar marker %q is missing", marker)
 		}
